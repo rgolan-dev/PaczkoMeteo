@@ -10,7 +10,9 @@ GET https://api-pl-points.easypack24.net/v1/points/{kod}/air-sensors
 
 Zwykły Node.js `fetch`, bez autoryzacji, cookies i profilu przeglądarki, otrzymał HTTP 200 oraz rzeczywiste pomiary TOR02BAPP. Dla TOR75M API zwróciło 404. Format to `current.values`, `current.index` oraz `current.fromDateTime`–`current.tillDateTime`. Pozwala to całkowicie zrezygnować z odczytywania stron HTML i blokowanego POST `shipx-point-data`.
 
-Aplikację przestawiono na ten endpoint. Usunięto funkcję Python, zależności curl_cffi, lokalny serwer pomocniczy i odczyty HTML. Mediany i walidacja pozostają w TypeScript. Poniższe wcześniejsze wyniki 403 dotyczą starego interfejsu stron, nie publicznego endpointu air-sensors. Weryfikacja nowego wdrożenia w toku.
+Aplikację przestawiono na ten endpoint. Usunięto funkcję Python, zależności curl_cffi, lokalny serwer pomocniczy i odczyty HTML. Mediany i walidacja pozostają w TypeScript. Poniższe wcześniejsze wyniki 403 dotyczą starego interfejsu stron, nie publicznego endpointu air-sensors. **Potwierdzone w działaniu:** wdrożenie `334fa11` na `paczko-meteo.vercel.app` zwróciło dostępne pomiary z publicznego API. Agregacja 3 km wokół TOR75M zawierała dane TOR02BAPP (685 m): temperatura około 14°C, wilgotność 73%, ciśnienie 1020,5 hPa, PM2,5 8,32 µg/m³ i PM10 20,41 µg/m³. Pozostałe 7 punktów zwróciło 404, a nie 403. To wartości z chwili sprawdzenia, nie stałe dane aplikacji.
+
+Przeszło 10 testów jednostkowych i 12 przeglądarkowych, w tym rzeczywisty odczyt TOR02BAPP oraz offline. [Test publicznego API na GitHub Actions](https://github.com/rgolan-dev/PaczkoMeteo/actions/runs/40515961160) również zakończył się sukcesem zwykłym Node.js na Linux. Rozwiązanie mieści się w GitHub + Vercel, bez dodatkowego hostingu i bez autoryzacji do InPost.
 
 ## Poprzednie wyniki dla interfejsu stron paczkomatów
 
