@@ -241,7 +241,7 @@
       {#if hasReadings && data}<p class="reading-source">InPost · pobrano {time(data.fetchedAt)}{#if data.sensors.measuredFrom && data.sensors.measuredTo} · dane {time(data.sensors.measuredFrom)}–{time(data.sensors.measuredTo)}{/if}</p>{/if}
       {#if !measurementPoints.length}<p class="muted">Brak dostępnych pomiarów w tym obszarze. Możesz wybrać większy promień.</p>{/if}
     </details>
-    <footer class="app-footer"><span>PaczkoMeteo</span><button onclick={() => sourcesDialog.showModal()}>Źródła i pomiary<Icon name="arrow" size={14}/></button></footer>
+    <footer class="app-footer"><div class="footer-brand"><strong>PaczkoMeteo</strong><span>Autor: <a href="https://rgolan.dev/" target="_blank" rel="noreferrer">rgolan.dev</a></span></div><button onclick={() => sourcesDialog.showModal()}>Źródła i pomiary<Icon name="arrow" size={14}/></button></footer>
   </main>
 </div>
 

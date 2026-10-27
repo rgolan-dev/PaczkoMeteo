@@ -122,7 +122,10 @@ h2 { font-size:17px; line-height:1.5; font-weight:750; letter-spacing:-.5px; }
 .point-state strong { font-weight:500; }
 .reading-source { font-size:10px; color:#6a7c69; line-height:1.8; margin:16px 0; }
 .app-footer { display:flex; align-items:center; justify-content:space-between; gap:15px; padding:17px 1px 0; font-size:10px; color:#7b8978; }
-.app-footer>span { font-family:Manrope,sans-serif; font-weight:650; }
+.footer-brand { display:flex; flex-direction:column; gap:5px; }
+.footer-brand strong { font-family:Manrope,sans-serif; font-weight:650; }
+.footer-brand a { text-decoration:underline; text-underline-offset:3px; }
+.footer-brand a:hover { color:var(--green); }
 .app-footer button { display:flex; align-items:center; gap:7px; font-size:10px; min-height:44px; padding:0; }
 .notice { display:flex; align-items:center; gap:10px; border:1px solid #e4d8b9; border-radius:12px; background:#f0eadb; color:#80662f; font-size:12px; line-height:1.6; padding:13px 16px; margin-bottom:20px; }
 .empty-readings { border:1px solid var(--line); border-radius:24px; background:#fff; text-align:center; padding:36px 24px; display:flex; flex-direction:column; align-items:center; justify-content:center; }
