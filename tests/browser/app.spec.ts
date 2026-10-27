@@ -76,22 +76,19 @@ test('reloads actual saved sensor readings offline', async ({ page, context }) =
 test('live server reports InPost availability without a model fallback', async ({ request }) => {
   const invalid = await request.get('/weather?station=..%2F');
   expect(invalid.status()).toBe(400);
-  const response = await request.get('/weather?station=TOR75M&radius=0');
+  const response = await request.get('/weather?station=TOR02BAPP&radius=0');
   expect(response.status()).toBe(200);
   const data = await response.json();
-  expect(data.station.latitude).toBe(52.99717);
+  expect(data.station.code).toBe('TOR02BAPP');
+  expect(data.sensors.status).toBe('available');
+  expect(typeof data.sensors.values.TEMPERATURE).toBe('number');
+  expect(Date.parse(data.sensors.measuredTo)).toBeGreaterThan(0);
   expect(data).not.toHaveProperty('forecast');
   expect(['available', 'unavailable', 'blocked']).toContain(data.sensors.status);
   if (data.sensors.status === 'blocked') {
     expect([403, 429]).toContain(data.sensors.httpStatus);
     expect(data.sensors.values).toEqual({});
   }
-});
-
-test('Python reader rejects arbitrary URLs before making upstream requests', async ({ request }) => {
-  const response = await request.post('/api/inpost', { data: { points: [{ code: 'TOR75M', url: 'https://example.com/paczkomat-tor75m-test' }] } });
-  expect(response.status()).toBe(400);
-  expect((await response.json()).message).toBe('Invalid InPost point list');
 });
 
 test('shows nearby aggregation per sensor and allows changing the radius', async ({ page }) => {

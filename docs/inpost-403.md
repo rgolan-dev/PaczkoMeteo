@@ -1,6 +1,18 @@
 # Sprawdzenie błędu InPost 403 — 27 października 2026
 
-## Aktualny status wdrożenia
+## Nowy publiczny endpoint — poprawka
+
+W świeżej [poprawce InPost Air #155](https://github.com/CyberDeer/InPost-Air/pull/155), utworzonej 27.10.2026 o 11:24 UTC, wskazano publiczny interfejs używany przez aplikację InPost:
+
+```text
+GET https://api-pl-points.easypack24.net/v1/points/{kod}/air-sensors
+```
+
+Zwykły Node.js `fetch`, bez autoryzacji, cookies i profilu przeglądarki, otrzymał HTTP 200 oraz rzeczywiste pomiary TOR02BAPP. Dla TOR75M API zwróciło 404. Format to `current.values`, `current.index` oraz `current.fromDateTime`–`current.tillDateTime`. Pozwala to całkowicie zrezygnować z odczytywania stron HTML i blokowanego POST `shipx-point-data`.
+
+Aplikację przestawiono na ten endpoint. Usunięto funkcję Python, zależności curl_cffi, lokalny serwer pomocniczy i odczyty HTML. Mediany i walidacja pozostają w TypeScript. Poniższe wcześniejsze wyniki 403 dotyczą starego interfejsu stron, nie publicznego endpointu air-sensors. Weryfikacja nowego wdrożenia w toku.
+
+## Poprzednie wyniki dla interfejsu stron paczkomatów
 
 - Vercel: Node oraz funkcja Python uruchamiają się prawidłowo. Lista punktów działa. Odczyty w regionie Frankfurt nadal kończą się 403, również z `curl_cffi`.
 - [GitHub Actions / Linux](https://github.com/rgolan-dev/PaczkoMeteo/actions/runs/40512899053): oba punkty diagnostyczne otrzymały 403 na otwarciu strony.

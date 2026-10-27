@@ -23,7 +23,7 @@
   let requestId = 0;
   const station = $derived(data?.station ?? DEFAULT_STATION);
   const level = $derived(data?.sensors.level ? LEVELS[data.sensors.level] : null);
-  const stale = $derived(!!data && now - Date.parse(data.fetchedAt) > 20 * 60_000);
+  const stale = $derived(!!data && (now - Date.parse(data.fetchedAt) > 20 * 60_000 || data.nearby?.some(point => point.sensors.status === 'available' && point.sensors.measuredTo && now - Date.parse(point.sensors.measuredTo) > 20 * 60_000)));
   const aggregation = $derived(data?.aggregation);
   const hasReadings = $derived(data?.sensors.status === 'available');
   const pollutants = [ { key: 'PM25', label: 'PM 2,5' }, { key: 'PM10', label: 'PM 10' }, { key: 'O3', label: 'O₃' }, { key: 'NO2', label: 'NO₂' } ];
@@ -148,7 +148,7 @@
           {:else}<p class="empty-air">Brak pomiarów jakości powietrza.</p>{/if}
         </section>
       </div>
-      <p class="reading-source">InPost{aggregation ? " · mediany z okolicy" : ""} · pobrano {data.sensors.retrievedAt ? time(data.sensors.retrievedAt) : '—'} · czas pomiaru nieznany</p>
+      <p class="reading-source">InPost{aggregation ? " · mediany z okolicy" : ""} · pobrano {data.sensors.retrievedAt ? time(data.sensors.retrievedAt) : '—'}{#if data.sensors.measuredFrom && data.sensors.measuredTo} · dane {time(data.sensors.measuredFrom)}–{time(data.sensors.measuredTo)}{/if}</p>
     {:else if loading && !data}
       <div class="empty-readings" role="status"><span class="spinning"><Icon name="refresh" size={25}/></span><p>Pobieranie pomiarów InPost…</p></div>
     {:else}
@@ -181,6 +181,6 @@
 
 <dialog bind:this={sourcesDialog} class="modal">
   <div class="modal-heading"><h2>Dane InPost</h2><button class="icon-button" aria-label="Zamknij informacje o danych" onclick={() => sourcesDialog.close()}><Icon name="close"/></button></div>
-  <p>Tryb okolicy sprawdza maksymalnie 8 najbliższych paczkomatów w wybranym promieniu. Każda wartość to mediana dostępnych odczytów danego parametru. Punkty bez pomiaru nie wchodzą do obliczeń. Jedna próbka oznacza wartość z jednego punktu.</p><p>Temperatura, wilgotność, ciśnienie i jakość powietrza pochodzą wyłącznie z czujników udostępnianych przez InPost. Brakujące pomiary pozostają puste.</p><p>InPost nie podaje czasu pomiaru. Pokazujemy czas pobrania. Odświeżanie co 5 minut, gdy aplikacja jest otwarta.</p>
+  <p>Tryb okolicy sprawdza maksymalnie 8 najbliższych paczkomatów w wybranym promieniu. Każda wartość to mediana dostępnych odczytów danego parametru. Punkty bez pomiaru nie wchodzą do obliczeń. Jedna próbka oznacza wartość z jednego punktu.</p><p>Temperatura, wilgotność, ciśnienie i jakość powietrza pochodzą wyłącznie z czujników udostępnianych przez InPost. Brakujące pomiary pozostają puste.</p><p>API podaje przedział czasu, z którego pochodzą pomiary. Przy agregacji pokazujemy zakres obejmujący dostępne próbki oraz czas pobrania. Odświeżanie co 5 minut, gdy aplikacja jest otwarta.</p>
   <a class="text-link" href={station.url} target="_blank" rel="noreferrer">Strona paczkomatu<Icon name="external" size={14}/></a>
 </dialog>

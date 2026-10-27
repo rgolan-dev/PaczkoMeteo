@@ -8,7 +8,7 @@ export class StationError extends Error {
 const cache = new Map<string, { expires: number; data: WeatherData }>();
 const pending = new Map<string, Promise<WeatherData>>();
 const slug = (text: string) => text.toLowerCase().replace(/ł/g, 'l').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-const pointsApi = 'https://api-shipx-pl.easypack24.net/v1/points';
+const pointsApi = 'https://api-pl-points.easypack24.net/v1/points';
 const signalFor = (deadline: AbortSignal) => AbortSignal.any([deadline, AbortSignal.timeout(5000)]);
 
 type Point = { name: string; distance?: number; location: { latitude: number; longitude: number }; address?: { line1?: string }; address_details?: { city?: string; street?: string; province?: string }; air_index_level?: string | null };
@@ -46,37 +46,28 @@ async function getNearby(station: Station, radius: number, deadline: AbortSignal
   return [...points.values()].sort((a, b) => a.distance - b.distance).slice(0, 8);
 }
 
-type ReaderResult = { code: string; httpStatus: number | null; stage: string; payload?: unknown; retrievedAt?: string };
-
-function sensorResult(result: ReaderResult): Sensors {
+export async function getSensors(station: Station, deadline: AbortSignal): Promise<Sensors> {
   const unavailable: Sensors = { status: 'unavailable', level: null, values: {}, retrievedAt: null, message: 'Nie udało się połączyć z InPost.' };
-  const httpStatus = result.httpStatus ?? undefined;
-  if (httpStatus === 403 || httpStatus === 429) return { ...unavailable, status: 'blocked', httpStatus, message: `InPost odrzucił dostęp (HTTP ${httpStatus}).` };
-  if (httpStatus === 404) return { ...unavailable, httpStatus, message: 'InPost nie udostępnia obecnie pomiarów tego punktu.' };
-  if (result.stage === 'missing-page') return { ...unavailable, message: 'Brak interfejsu pomiarów dla tego punktu.' };
-  if (httpStatus === 200 && result.payload) {
-    try { return parseSensors(result.payload, result.retrievedAt ?? new Date().toISOString()); } catch { /* Invalid upstream data remains unavailable. */ }
-  }
-  return { ...unavailable, httpStatus };
+  try {
+    const response = await fetch(`${pointsApi}/${encodeURIComponent(station.code)}/air-sensors`, { signal: signalFor(deadline) });
+    if (response.status === 403 || response.status === 429) return { ...unavailable, status: 'blocked', httpStatus: response.status, message: `InPost odrzucił dostęp (HTTP ${response.status}).` };
+    if (response.status === 404) return { ...unavailable, httpStatus: 404, message: 'InPost nie udostępnia obecnie pomiarów tego punktu.' };
+    if (!response.ok) return { ...unavailable, httpStatus: response.status };
+    return parseSensors(await response.json(), new Date().toISOString());
+  } catch { return unavailable; }
 }
 
-async function getSensors(points: Station[], collectorUrl: URL, deadline: AbortSignal): Promise<Map<string, Sensors>> {
-  const response = await fetch(collectorUrl, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ points: points.map(({ code, url }) => ({ code, url })) }),
-    signal: deadline,
-  });
-  if (!response.ok) throw new StationError(`Odczyt InPost jest niedostępny (HTTP ${response.status}).`);
-  const body = await response.json();
-  if (!Array.isArray(body.results)) throw new StationError('Nieprawidłowa odpowiedź odczytu InPost.');
-  return new Map(points.map(point => {
-    const result = body.results.find((result: ReaderResult) => result.code === point.code);
-    return [point.code, sensorResult(result ?? { code: point.code, httpStatus: null, stage: 'network' })];
+async function collect<T, R>(items: T[], run: (item: T) => Promise<R>): Promise<R[]> {
+  const output: R[] = new Array(items.length);
+  let cursor = 0;
+  await Promise.all(Array.from({ length: Math.min(3, items.length) }, async () => {
+    while (cursor < items.length) { const index = cursor++; output[index] = await run(items[index]); }
   }));
+  return output;
 }
 
-export async function getWeather(code: string, radius: number, collectorUrl: URL): Promise<WeatherData> {
-  const key = `${collectorUrl.origin}:${code}:${radius}`;
+export async function getWeather(code: string, radius = 3000): Promise<WeatherData> {
+  const key = `${code}:${radius}`;
   const cached = cache.get(key);
   if (cached && cached.expires > Date.now()) return cached.data;
   const existing = pending.get(key);
@@ -90,17 +81,19 @@ export async function getWeather(code: string, radius: number, collectorUrl: URL
       try { points = await getNearby(station, radius, deadline); }
       catch { discoveryError = 'Nie udało się pobrać listy punktów w okolicy. Sprawdzono tylko wybrany paczkomat.'; }
     }
-    const results = await getSensors(points.map(point => point.station), collectorUrl, deadline);
-    const nearby: NearbyReading[] = points.map(point => ({ ...point, sensors: results.get(point.station.code)! }));
+    const nearby: NearbyReading[] = await collect(points, async point => ({ ...point, sensors: await getSensors(point.station, deadline) }));
     const fetchedAt = new Date().toISOString();
     let sensors = nearby[0].sensors;
     const readings = aggregateReadings(nearby);
     if (radius) {
       const available = Object.keys(readings).length > 0;
+      const windows = nearby.filter(point => point.sensors.status === 'available').map(point => point.sensors);
+      const from = windows.flatMap(sensor => sensor.measuredFrom ? [sensor.measuredFrom] : []).sort((a, b) => Date.parse(a) - Date.parse(b));
+      const to = windows.flatMap(sensor => sensor.measuredTo ? [sensor.measuredTo] : []).sort((a, b) => Date.parse(a) - Date.parse(b));
       sensors = {
         status: available ? 'available' : nearby.some(point => point.sensors.status === 'blocked') ? 'blocked' : 'unavailable',
         values: Object.fromEntries(Object.entries(readings).map(([key, reading]) => [key, reading.value])),
-        level: null, retrievedAt: available ? fetchedAt : null,
+        level: null, retrievedAt: available ? fetchedAt : null, measuredFrom: from[0] ?? null, measuredTo: to.at(-1) ?? null,
         message: available ? 'Mediana dostępnych pomiarów InPost.' : 'Nie uzyskano pomiarów ze sprawdzonych punktów.',
       };
     }

@@ -12,6 +12,8 @@ export type Sensors = {
   level: string | null;
   values: Record<string, number>;
   retrievedAt: string | null;
+  measuredFrom?: string | null;
+  measuredTo?: string | null;
   message: string;
   httpStatus?: number;
 };
@@ -72,29 +74,35 @@ export const LEVELS: Record<string, { label: string; color: string }> = {
   VERY_BAD: { label: 'Bardzo zła', color: '#85496c' }
 };
 
-// Missing readings must stay missing. In particular, Number('') would invent a zero.
+// The public Points API returns numeric values, not the legacy colon-separated strings.
 export function parseSensors(raw: unknown, retrievedAt: string): Sensors {
   if (!raw || typeof raw !== 'object') throw new Error('Invalid sensor response');
-  const data = raw as Record<string, unknown>;
-  if (!Array.isArray(data.air_sensors)) throw new Error('Missing sensor readings');
+  const current = (raw as Record<string, unknown>).current;
+  if (!current || typeof current !== 'object') throw new Error('Missing current readings');
+  const data = current as Record<string, unknown>;
+  if (!Array.isArray(data.values)) throw new Error('Missing sensor values');
   const values: Record<string, number> = {};
   const known = new Set(['TEMPERATURE', 'HUMIDITY', 'PRESSURE', 'PM1', 'PM25', 'PM4', 'PM10', 'O3', 'NO2']);
-  for (const item of data.air_sensors) {
-    if (typeof item !== 'string') continue;
-    const [name, reading] = item.split(':');
-    if (!known.has(name) || !reading?.trim()) continue;
-    const number = Number(reading);
-    if (!Number.isFinite(number)) continue;
-    if (name !== 'TEMPERATURE' && number < 0) continue;
-    if (name === 'HUMIDITY' && number > 100) continue;
-    values[name] = number;
+  for (const item of data.values) {
+    if (!item || typeof item !== 'object') continue;
+    const { name, value } = item as { name?: unknown; value?: unknown };
+    if (typeof name !== 'string' || !known.has(name) || typeof value !== 'number' || !Number.isFinite(value)) continue;
+    if (name !== 'TEMPERATURE' && value < 0) continue;
+    if (name === 'HUMIDITY' && value > 100) continue;
+    values[name] = value;
   }
   const available = Object.keys(values).length > 0;
+  const level = data.index && typeof data.index === 'object' ? (data.index as Record<string, unknown>).level : null;
+  const validDate = (value: unknown): string | null => typeof value === 'string' && Number.isFinite(Date.parse(value)) ? value : null;
+  let measuredFrom = validDate(data.fromDateTime);
+  let measuredTo = validDate(data.tillDateTime);
+  if (measuredFrom && measuredTo && Date.parse(measuredFrom) > Date.parse(measuredTo)) measuredFrom = measuredTo = null;
   return {
     status: available ? 'available' : 'unavailable',
-    level: available && typeof data.air_index_level === 'string' && data.air_index_level in LEVELS ? data.air_index_level : null,
+    level: available && typeof level === 'string' && Object.hasOwn(LEVELS, level) ? level : null,
     values, retrievedAt: available ? retrievedAt : null,
-    message: available ? 'Odczyty udostępnione przez InPost. Źródło nie podaje czasu pomiaru.' : 'Ten paczkomat nie udostępnia obecnie odczytów czujników.'
+    measuredFrom: available ? measuredFrom : null, measuredTo: available ? measuredTo : null,
+    message: available ? 'Pomiary z publicznego API InPost Points.' : 'Ten paczkomat nie udostępnia obecnie odczytów czujników.'
   };
 }
 
