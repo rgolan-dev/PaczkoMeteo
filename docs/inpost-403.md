@@ -1,6 +1,16 @@
 # Sprawdzenie błędu InPost 403 — 27 października 2026
 
-## Wynik
+## Aktualny status wdrożenia
+
+- Vercel: Node oraz funkcja Python uruchamiają się prawidłowo. Lista punktów działa. Odczyty w regionie Frankfurt nadal kończą się 403, również z `curl_cffi`.
+- [GitHub Actions / Linux](https://github.com/rgolan-dev/PaczkoMeteo/actions/runs/40512899053): oba punkty diagnostyczne otrzymały 403 na otwarciu strony.
+- [GitHub Actions / macOS](https://github.com/rgolan-dev/PaczkoMeteo/actions/runs/40513705776): identyczny wynik 403. Środowisko i zależności zostały poprawnie zainstalowane, zawiódł sam odczyt InPost.
+- Lokalnie ten sam klient Python otrzymał komplet pomiarów TOR02BAPP po użyciu angielskiej strony: temperatura około 14,4°C, PM2,5 około 7,85 µg/m³, PM10 około 20,24 µg/m³. To odczyt podczas testu, nie gwarantowana bieżąca wartość.
+- Próba bezpośredniego odczytu w przeglądarce z domeny aplikacji zakończyła się błędem CORS. Prosty POST bez nagłówka X-Requested-With zwracał przekierowanie zamiast pomiarów. Nie potwierdzono działającego wariantu przeglądarkowego.
+
+Dokładnej reguły Cloudflare nie znamy. Wyniki wskazują, że znaczenie ma źródło połączenia, nie sam kod parsera czy instalacja bibliotek. W zadanych granicach (tylko GitHub + Vercel) nie uzyskano niezawodnego odczytu. Nie dodano niedziałającego cyklicznego kolektora. Potrzebny byłby dostęp zaakceptowany przez dostawcę danych, np. uzgodnione API lub dopuszczenie żądań z tych usług; nie potwierdzono, że InPost oferuje taki dostęp dla tego interfejsu.
+
+## Wynik pierwszych testów
 
 Początkowo zaobserwowana odpowiedź pomiarów TOR75M to HTML Cloudflare „Sorry, you have been blocked”, HTTP 403. Nie jest to komunikat JSON o brakującym tokenie aplikacji. Nie znaleziono dowodu, że interfejs pomiarowy używany przez publiczną stronę wymaga konta InPost lub klucza API.
 

@@ -4,6 +4,8 @@ Mobilna PWA: temperatura, wilgotność, ciśnienie i jakość powietrza z czujni
 
 [Aplikacja](https://paczko-meteo.vercel.app/)
 
+**Status odczytów (27.10.2026):** interfejs i wdrożenie działają, ale InPost nadal zwraca 403 z Vercel. Sprawdzone runnery GitHub Actions (Linux i macOS) również otrzymały 403. Lokalny kolektor pobiera rzeczywiste pomiary z TOR02BAPP. Nie ma jeszcze potwierdzonego rozwiązania działającego wyłącznie na GitHub + Vercel; zmiana transportu i regionu nie usunęła blokady. Szczegóły oraz odnośniki do testów są w [raporcie](docs/inpost-403.md).
+
 ## Agregacja okolicy
 
 Wybierz paczkomat i promień 1, 3 lub 5 km albo pomiary pojedynczego punktu. Aplikacja sprawdza maksymalnie 8 najbliższych lokalizacji. Każdy parametr jest agregowany osobno jako **mediana** dostępnych odczytów; obok wartości jest liczba próbek. Braki i błędy nie są traktowane jako zera. Lista punktów pokazuje odległości i statusy. Kategorii indeksu powietrza nie uśredniamy.
