@@ -107,7 +107,7 @@ export function parseSensors(raw: unknown, retrievedAt: string): Sensors {
 }
 
 export function number(value: number | null | undefined, digits = 0): string {
-  return value == null || !Number.isFinite(value) ? '—' : new Intl.NumberFormat('pl-PL', { maximumFractionDigits: digits }).format(value);
+  return value == null || !Number.isFinite(value) ? '—' : new Intl.NumberFormat('pl-PL', { maximumFractionDigits: digits }).format(Math.abs(value) < 0.5 * 10 ** -digits ? 0 : value);
 }
 
 export function time(value: number | string): string {
