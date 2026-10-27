@@ -38,7 +38,8 @@ test('shows one honest error without empty measurement grids', async ({ page }, 
   await page.route('**/weather?*', route => route.fulfill({ json: fixture('TOR75M', false) }));
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Nie udało się pobrać pomiarów' })).toBeVisible();
-  await expect(page.getByText('InPost odrzucił pobranie pomiarów (HTTP 403).', { exact: true })).toBeVisible();
+  await expect(page.getByText('Pomiary są chwilowo niedostępne. Spróbuj odświeżyć później.', { exact: true })).toBeVisible();
+  await expect(page.locator('body')).not.toContainText('HTTP 403');
   await expect(page.locator('.pollutants')).toHaveCount(0);
   await expect(page.locator('.temperature')).toHaveCount(0);
   await page.screenshot({ path: `test-results/${testInfo.project.name}-blocked.png`, fullPage: true });
@@ -97,7 +98,8 @@ test('shows nearby aggregation per sensor and allows changing the radius', async
   second.sensors.values = { TEMPERATURE: 14.2, PM10: 16.5 };
   data.nearby = [
     { station: data.station, distance: 0, sensors: { ...data.sensors, values: { ...data.sensors.values } } },
-    { station: second.station, distance: 547, sensors: second.sensors }
+    { station: second.station, distance: 547, sensors: second.sensors },
+    { station: { ...DEFAULT_STATION, code: 'TOR99M' }, distance: 600, sensors: { status: 'unavailable', level: null, values: {}, retrievedAt: null, httpStatus: 404, message: 'Brak pomiarów' } }
   ];
   data.aggregation = { radius: 3000, discoveryError: null, readings: {
     TEMPERATURE: { value: 12.2, min: 10.2, max: 14.2, sources: [{ code: 'TOR75M', distance: 0, value: 10.2 }, { code: 'TOR23M', distance: 547, value: 14.2 }] },
@@ -114,7 +116,10 @@ test('shows nearby aggregation per sensor and allows changing the radius', async
   await expect(page.locator('.temperature')).toContainText('12,2');
   await expect(page.locator('.aggregate-caption')).toContainText('Mediana z 2 pkt.');
   await expect(page.locator('.pollutants .reading-count').first()).toHaveText('1 pkt.');
-  await page.getByText('Punkty · 2/2 z pomiarami', { exact: true }).click();
+  await page.getByText('Punkty z pomiarami · 2', { exact: true }).click();
+  await expect(page.locator('.point-row')).toHaveCount(2);
+  await expect(page.locator('.points-list')).not.toContainText('TOR99M');
+  await expect(page.locator('body')).not.toContainText('HTTP 404');
   await expect(page.getByText('Okólna 141 · 0 m', { exact: true })).toBeVisible();
   await expect(page.locator('.point-row').nth(1)).toContainText('547 m');
   await page.getByLabel('Pomiary', { exact: true }).selectOption('0');

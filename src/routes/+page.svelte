@@ -26,6 +26,8 @@
   const stale = $derived(!!data && (now - Date.parse(data.fetchedAt) > 20 * 60_000 || data.nearby?.some(point => point.sensors.status === 'available' && point.sensors.measuredTo && now - Date.parse(point.sensors.measuredTo) > 20 * 60_000)));
   const aggregation = $derived(data?.aggregation);
   const hasReadings = $derived(data?.sensors.status === 'available');
+  const measurementPoints = $derived(data?.nearby?.filter(point => point.sensors.status === 'available') ?? []);
+  const unavailableMessage = $derived(data?.sensors.status === 'blocked' ? 'Pomiary są chwilowo niedostępne. Spróbuj odświeżyć później.' : data?.sensors.message);
   const pollutants = [ { key: 'PM25', label: 'PM 2,5' }, { key: 'PM10', label: 'PM 10' }, { key: 'O3', label: 'O₃' }, { key: 'NO2', label: 'NO₂' } ];
 
   // Keep preferences and offline readings from the previous app name.
@@ -148,22 +150,27 @@
           {:else}<p class="empty-air">Brak pomiarów jakości powietrza.</p>{/if}
         </section>
       </div>
-      <p class="reading-source">InPost{aggregation ? " · mediany z okolicy" : ""} · pobrano {data.sensors.retrievedAt ? time(data.sensors.retrievedAt) : '—'}{#if data.sensors.measuredFrom && data.sensors.measuredTo} · dane {time(data.sensors.measuredFrom)}–{time(data.sensors.measuredTo)}{/if}</p>
+      <p class="reading-source">InPost{aggregation ? " · mediany z okolicy" : ""} · pobrano {data.sensors.retrievedAt ? time(data.sensors.retrievedAt) : '—'}{#if data.sensors.measuredFrom && data.sensors.measuredTo}{' · dane '}{time(data.sensors.measuredFrom)}–{time(data.sensors.measuredTo)}{/if}</p>
     {:else if loading && !data}
       <div class="empty-readings" role="status"><span class="spinning"><Icon name="refresh" size={25}/></span><p>Pobieranie pomiarów InPost…</p></div>
     {:else}
       <section class="empty-readings" aria-labelledby="readings-unavailable">
         <span class="empty-icon"><Icon name="box" size={28}/></span>
         <h2 id="readings-unavailable">Nie udało się pobrać pomiarów</h2>
-        <p>{error || data?.sensors.message || 'Brak połączenia z InPost.'}</p>
+        <p>{error || unavailableMessage || 'Brak połączenia z InPost.'}</p>
         <a class="text-link" href={station.url} target="_blank" rel="noreferrer">Otwórz stronę paczkomatu<Icon name="external" size={14}/></a>
       </section>
     {/if}
 
-    {#if data?.nearby?.length}
-      <details class="points-list" open={!hasReadings}><summary>Punkty · {data.nearby.filter(point => point.sensors.status === 'available').length}/{data.nearby.length} z pomiarami</summary>
+    {#if measurementPoints.length}
+      <details class="points-list"><summary>Punkty z pomiarami · {measurementPoints.length}</summary>
         {#if aggregation?.discoveryError}<p class="discovery-error">{aggregation.discoveryError}</p>{/if}
-        {#each data.nearby as point}<div class="point-row"><div><a href={point.station.url} target="_blank" rel="noreferrer">{point.station.code}<Icon name="external" size={11}/></a><span>{point.station.address} · {distanceLabel(point.distance)}</span></div><div class="point-state" class:available={point.sensors.status === 'available'}>{#if point.sensors.status === 'available'}<strong>{point.sensors.values.TEMPERATURE != null ? `${number(point.sensors.values.TEMPERATURE, 1)}°C` : ''}{point.sensors.values.PM25 != null ? ` · PM2,5 ${number(point.sensors.values.PM25, 1)}` : ''}</strong><span>Pobrano {point.sensors.retrievedAt ? time(point.sensors.retrievedAt) : '—'}</span>{:else}<strong>{point.sensors.httpStatus ? `HTTP ${point.sensors.httpStatus}` : 'Brak danych'}</strong><span>{point.sensors.status === 'blocked' ? 'Dostęp odrzucony' : point.sensors.httpStatus === 404 ? 'Brak pomiarów' : 'Odczyt niedostępny'}</span>{/if}</div></div>{/each}
+        {#each measurementPoints as point}
+          <div class="point-row">
+            <div><a href={point.station.url} target="_blank" rel="noreferrer">{point.station.code}<Icon name="external" size={11}/></a><span>{point.station.address} · {distanceLabel(point.distance)}</span></div>
+            <div class="point-state available"><strong>{point.sensors.values.TEMPERATURE != null ? `${number(point.sensors.values.TEMPERATURE, 1)}°C` : ''}{point.sensors.values.PM25 != null ? ` · PM2,5 ${number(point.sensors.values.PM25, 1)}` : ''}</strong><span>Pobrano {point.sensors.retrievedAt ? time(point.sensors.retrievedAt) : '—'}</span></div>
+          </div>
+        {/each}
       </details>
     {/if}
   </main>

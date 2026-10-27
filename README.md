@@ -18,7 +18,7 @@ Odpowiedź zawiera wartości pomiarów, ocenę jakości powietrza i przedział c
 
 ## Agregacja okolicy
 
-Wybierz promień 1, 3 lub 5 km albo pojedynczy punkt. Aplikacja sprawdza do 8 najbliższych lokalizacji i oblicza **medianę osobno dla każdego parametru**. Każda wartość ma własną liczbę próbek. Rozwijana lista pokazuje źródła, odległości i błędy. Kategorie indeksu powietrza nie są uśredniane.
+Wybierz promień 1, 3 lub 5 km albo pojedynczy punkt. Aplikacja sprawdza do 8 najbliższych lokalizacji i oblicza **medianę osobno dla każdego parametru**. Każda wartość ma własną liczbę próbek. Rozwijana lista pokazuje wyłącznie punkty z dostępnymi pomiarami i ich odległości. Kategorie indeksu powietrza nie są uśredniane.
 
 Wybór i ostatnie udane pomiary są zapisywane na urządzeniu. PWA otwiera się offline po pierwszym użyciu online. Odświeżanie co 5 minut podczas używania aplikacji. Cache serwera: 5 minut dla pomiarów, 30 sekund dla błędów. Interfejs pokazuje czas pobrania i dostępny zakres czasu danych.
 
