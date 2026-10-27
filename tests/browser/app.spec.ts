@@ -98,8 +98,8 @@ test('live server reports InPost availability without a model fallback', async (
   const invalid = await request.get('/weather?station=..%2F');
   expect(invalid.status()).toBe(400);
   const response = await request.get('/weather?station=TOR02BAPP&radius=0');
-  expect(response.status()).toBe(200);
   const data = await response.json();
+  expect(response.status(), JSON.stringify(data)).toBe(200);
   expect(data.station.code).toBe('TOR02BAPP');
   expect(data.sensors.status).toBe('available');
   expect(typeof data.sensors.values.TEMPERATURE).toBe('number');
@@ -121,7 +121,7 @@ test('shows nearby aggregation per sensor and allows changing the radius', async
     { station: second.station, distance: 547, sensors: second.sensors },
     { station: { ...DEFAULT_STATION, code: 'TOR99M' }, distance: 600, sensors: { status: 'unavailable', level: null, values: {}, retrievedAt: null, httpStatus: 404, message: 'Brak pomiarów' } }
   ];
-  data.aggregation = { radius: 3000, discoveryError: null, readings: {
+  data.aggregation = { radius: 5000, discoveryError: null, readings: {
     TEMPERATURE: { value: 12.2, min: 10.2, max: 14.2, sources: [{ code: 'TOR75M', distance: 0, value: 10.2 }, { code: 'TOR23M', distance: 547, value: 14.2 }] },
     PM25: { value: 0, min: 0, max: 0, sources: [{ code: 'TOR75M', distance: 0, value: 0 }] },
   } };
@@ -143,7 +143,7 @@ test('shows nearby aggregation per sensor and allows changing the radius', async
   await expect(page.locator('.point-row').nth(1)).toContainText('547 m');
   await page.getByLabel('Pomiary', { exact: true }).selectOption('0');
   await expect(page.locator('.temperature')).toContainText('10,2');
-  expect(radii).toEqual(['3000', '0']);
+  expect(radii).toEqual(['5000', '0']);
 });
 
 
@@ -196,4 +196,36 @@ test('forecast refresh works even when the InPost endpoint fails', async ({ page
   await page.getByRole('button', { name: 'Odśwież dane' }).click();
   await expect.poll(() => forecasts).toBe(2);
   await expect(page.locator('.hour-cell')).toHaveCount(6);
+});
+
+test('starts older installations at 5 km and remembers a subsequent manual radius', async ({ page }) => {
+  const radii: string[] = [];
+  await page.route('**/weather?*', route => {
+    radii.push(new URL(route.request().url()).searchParams.get('radius')!);
+    return route.fulfill({ json: fixture() });
+  });
+  await page.addInitScript(() => { localStorage.setItem('paczkometeo-radius', '0'); });
+  await page.goto('/');
+  await expect(page.locator('.temperature')).toContainText('10,2');
+  await page.getByText('Pomiary w okolicy', { exact: true }).click();
+  await expect(page.getByLabel('Pomiary', { exact: true })).toHaveValue('5000');
+  await page.getByLabel('Pomiary', { exact: true }).selectOption('1000');
+  await expect.poll(() => radii).toEqual(['5000', '1000']);
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('paczkometeo-radius-v2'))).toBe('1000');
+  await page.reload();
+  await page.getByText('Pomiary w okolicy', { exact: true }).click();
+  await expect(page.getByLabel('Pomiary', { exact: true })).toHaveValue('1000');
+  await expect.poll(() => radii).toEqual(['5000', '1000', '1000']);
+});
+
+test('live default area includes multiple sensors beyond the previous eight closest lockers', async ({ request }) => {
+  const response = await request.get('/weather?station=TOR75M');
+  const data = await response.json();
+  expect(response.status(), JSON.stringify(data)).toBe(200);
+  expect(data.aggregation.radius).toBe(5000);
+  expect(data.sensors.status, JSON.stringify(data)).toBe('available');
+  const sources = data.aggregation.readings.TEMPERATURE.sources;
+  expect(sources.length).toBeGreaterThan(1);
+  expect(sources.some((point: {distance:number}) => point.distance > 3000)).toBe(true);
+  expect(sources.every((point: {distance:number}) => point.distance <= 5000)).toBe(true);
 });

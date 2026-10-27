@@ -38,6 +38,8 @@ export type AggregatedReading = {
   sources: { code: string; distance: number; value: number }[];
 };
 
+export const DEFAULT_RADIUS = 5000;
+
 export function aggregateReadings(points: NearbyReading[]): Record<string, AggregatedReading> {
   const groups: Record<string, AggregatedReading['sources']> = {};
   for (const point of points) {

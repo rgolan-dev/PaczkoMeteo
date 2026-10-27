@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Icon from '#lib/Icon.svelte';
-  import { DEFAULT_STATION, LEVELS, number, time, distanceLabel, type WeatherData, type Station } from '#lib/weather.ts';
+  import { DEFAULT_STATION, DEFAULT_RADIUS, LEVELS, number, time, distanceLabel, type WeatherData, type Station } from '#lib/weather.ts';
 
   import { outfitAdvice, upcomingHours, weatherCondition, type Forecast } from '#lib/forecast.ts';
 
@@ -13,7 +13,7 @@
   let saved = $state(false);
   let now = $state(Date.now());
   let stationCode = $state(DEFAULT_STATION.code);
-  let radius = $state(3000);
+  let radius = $state(DEFAULT_RADIUS);
   let codeInput = $state('');
   let formError = $state('');
   let changing = $state(false);
@@ -96,7 +96,7 @@
       saved = false;
       now = Date.now();
       writeStorage('paczkometeo-station', stationCode);
-      writeStorage('paczkometeo-radius', String(requestedRadius));
+      writeStorage('paczkometeo-radius-v2', String(requestedRadius));
       if (result.sensors.status === 'available') writeStorage(`paczkometeo-inpost-${stationCode}-${requestedRadius}`, JSON.stringify(result));
       return true;
     } catch (cause) {
@@ -127,7 +127,8 @@
   onMount(() => {
     offline = !navigator.onLine;
     installed = matchMedia('(display-mode: standalone)').matches;
-    const storedRadius = Number(readStorage('paczkometeo-radius') ?? 3000);
+    // Start everyone on the new 5 km discovery; remember subsequent manual choices.
+    const storedRadius = Number(readStorage('paczkometeo-radius-v2') ?? DEFAULT_RADIUS);
     if ([0, 1000, 3000, 5000].includes(storedRadius)) radius = storedRadius;
     const storedStation = readStorage('paczkometeo-station');
     if (storedStation && /^[A-Z0-9]{3,12}$/.test(storedStation)) stationCode = storedStation;
@@ -233,8 +234,8 @@
       {/if}
     </div>
 
-    <details class="points-list"><summary><span>Pomiary w okolicy</span><span class="summary-count">{measurementPoints.length} {temperatureSources === 1 && measurementPoints.length === 1 ? 'punkt' : 'pkt.'}<Icon name="chevron" size={16}/></span></summary>
-      <div class="scope-controls"><label for="radius">Pomiary</label><select id="radius" bind:value={radius} onchange={() => load()}><option value={0}>Tylko {stationCode}</option><option value={1000}>Okolica · 1 km</option><option value={3000}>Okolica · 3 km</option><option value={5000}>Okolica · 5 km</option></select><p>Do 8 najbliższych paczkomatów. Pokazujemy punkty z pomiarami.</p></div>
+    <details class="points-list"><summary><span>Pomiary w okolicy</span><span class="summary-count">{radius ? `${number(radius / 1000)} km · ` : ''}{measurementPoints.length} {measurementPoints.length === 1 ? 'punkt' : 'pkt.'}<Icon name="chevron" size={16}/></span></summary>
+      <div class="scope-controls"><label for="radius">Pomiary</label><select id="radius" bind:value={radius} onchange={() => load()}><option value={0}>Tylko {stationCode}</option><option value={1000}>Okolica · 1 km</option><option value={3000}>Okolica · 3 km</option><option value={5000}>Okolica · 5 km</option></select><p>Wyszukujemy czujniki w całym wybranym obszarze. Pokazujemy tylko punkty z pomiarami.</p></div>
       {#if aggregation?.readings.TEMPERATURE}{@const reading = aggregation.readings.TEMPERATURE}<p class="aggregate-caption">{reading.sources.length > 1 ? `Mediana z ${reading.sources.length} pkt. · zakres ${number(reading.min, 1)}–${number(reading.max, 1)}°C` : 'Temperatura z jednego punktu pomiarowego.'}</p>{/if}
       {#if aggregation?.discoveryError}<p class="discovery-error">{aggregation.discoveryError}</p>{/if}
       {#each measurementPoints as point}<div class="point-row"><div><a href={point.station.url} target="_blank" rel="noreferrer">{point.station.code}<Icon name="external" size={12}/></a><span>{point.station.address} · {distanceLabel(point.distance)}</span></div><div class="point-state"><strong>{point.sensors.values.TEMPERATURE != null ? `${number(point.sensors.values.TEMPERATURE, 1)}°C` : ''}{point.sensors.values.PM25 != null ? ` · PM2,5 ${number(point.sensors.values.PM25, 1)}` : ''}</strong><span>Pobrano {point.sensors.retrievedAt ? time(point.sensors.retrievedAt) : '—'}</span></div></div>{/each}
@@ -252,7 +253,7 @@
 </dialog>
 <dialog bind:this={installDialog} class="modal"><div class="modal-heading"><h2>Zainstaluj</h2><button class="icon-button" aria-label="Zamknij instrukcję instalacji" onclick={() => installDialog.close()}><Icon name="close"/></button></div><div class="instruction"><strong>iPhone · Safari</strong><p>Udostępnij → Do ekranu głównego → Dodaj.</p></div><div class="instruction"><strong>Android · Chrome</strong><p>Menu ⋮ → Dodaj do ekranu głównego.</p></div></dialog>
 <dialog bind:this={sourcesDialog} class="modal"><div class="modal-heading"><h2>Źródła danych</h2><button class="icon-button" aria-label="Zamknij informacje o danych" onclick={() => sourcesDialog.close()}><Icon name="close"/></button></div>
-  <h3>Pomiary · InPost</h3><p>Temperatura w okolicy, wilgotność, ciśnienie i jakość powietrza pochodzą z czujników InPost. Sprawdzamy do 8 najbliższych punktów. W trybie okolicy liczymy medianę osobno dla każdego parametru. Punkty bez pomiarów są pomijane; brakujących wartości nie zastępujemy prognozą. Przedział czasu odczytów i lista punktów znajdują się w „Pomiary w okolicy”.</p>
+  <h3>Pomiary · InPost</h3><p>Temperatura w okolicy, wilgotność, ciśnienie i jakość powietrza pochodzą z czujników InPost. Domyślnie wyszukujemy punkty z czujnikami w promieniu 5 km. Najpierw pobieramy listę paczkomatów, a następnie odczyty punktów oznaczonych czujnikami. Sprawdzamy też wybrany paczkomat; gdy lista nie wskazuje czujników, sprawdzamy do 8 najbliższych punktów. W bardzo gęstej okolicy sprawdzamy do 32 punktów i informujemy o ograniczeniu. W trybie okolicy liczymy medianę osobno dla każdego parametru. Punkty bez pomiarów są pomijane; brakujących wartości nie zastępujemy prognozą. Przedział czasu odczytów i lista punktów znajdują się w „Pomiary w okolicy”.</p>
   <h3>Prognoza · Open-Meteo</h3><p>Warunki pogodowe, temperatura odczuwalna, opady, wiatr i kolejne dni są prognozą modelową dla lokalizacji wybranego paczkomatu. To osobne źródło, niezależne od czujników InPost.</p>
   <h3>Podpowiedź ubioru</h3><p>Orientacyjna propozycja na najbliższe 12 godzin, według najniższej temperatury odczuwalnej, zmian temperatury, opadów i wiatru. Nie uwzględnia Twojej aktywności ani indywidualnego odczuwania zimna. Zapisana lub nieaktualna prognoza nie generuje podpowiedzi.</p>
   <p>Odświeżamy dane co 5 minut podczas używania aplikacji. Niezależny projekt.</p><div class="source-links"><a class="text-link" href={station.url} target="_blank" rel="noreferrer">InPost<Icon name="external" size={14}/></a><a class="text-link" href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather data by Open-Meteo.com<Icon name="external" size={14}/></a></div>

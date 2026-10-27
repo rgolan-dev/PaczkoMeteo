@@ -6,7 +6,7 @@ Cel: rano w kilkanaście sekund wiedzieć, co założyć, co zabrać i czy pogod
 
 - Czytelny ekran telefonu: lokalna temperatura, propozycja ubioru, kolejne godziny, powietrze i trzy dni prognozy.
 - Pomiary InPost oddzielone od modelowej prognozy Open-Meteo. Brakujące odczyty czujnika nie są zastępowane prognozą.
-- Mediany z dostępnych czujników w okolicy; szczegóły i wybór promienia w rozwijanej sekcji.
+- Domyślne 5 km i wyszukiwanie czujników w całym obszarze zamiast sprawdzania tylko 8 najbliższych paczkomatów. Mediany z dostępnych czujników; szczegóły i wybór promienia w rozwijanej sekcji.
 - Podpowiedź ubioru według najchłodniejszej temperatury odczuwalnej w najbliższych 12 h, różnicy temperatur, opadów i wiatru. Podany horyzont i zakres temperatur pozwalają ocenić propozycję.
 - Zapis danych i instalacja PWA. Zapisane lub nieaktualne prognozy mają oznaczenie; nie generują propozycji ubioru.
 - Klawiatura, etykiety dostępności, stany ładowania i brak pustych parametrów jakości powietrza.
