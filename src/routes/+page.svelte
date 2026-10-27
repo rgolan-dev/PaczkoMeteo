@@ -38,7 +38,7 @@
     if (change) changing = true; else loading = true;
     error = ''; formError = '';
     try {
-      const response = await fetch(`/api/weather?station=${encodeURIComponent(code)}&radius=${requestedRadius}`, { signal: AbortSignal.timeout(25_000) });
+      const response = await fetch(`/weather?station=${encodeURIComponent(code)}&radius=${requestedRadius}`, { signal: AbortSignal.timeout(25_000) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? 'Nie udało się pobrać danych.');
       if (id !== requestId) return false;

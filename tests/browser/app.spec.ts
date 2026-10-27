@@ -15,7 +15,7 @@ function fixture(code = 'TOR75M', available = true): WeatherData {
 test('shows only InPost measurements in the compact interface', async ({ page }, testInfo) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.route('**/api/weather?*', route => route.fulfill({ json: fixture() }));
+  await page.route('**/weather?*', route => route.fulfill({ json: fixture() }));
   await page.goto('/');
   await expect(page.locator('.temperature')).toContainText('10,2');
   await expect(page.locator('.weather-metrics')).toContainText('70');
@@ -35,7 +35,7 @@ test('shows only InPost measurements in the compact interface', async ({ page },
 });
 
 test('shows one honest error without empty measurement grids', async ({ page }, testInfo) => {
-  await page.route('**/api/weather?*', route => route.fulfill({ json: fixture('TOR75M', false) }));
+  await page.route('**/weather?*', route => route.fulfill({ json: fixture('TOR75M', false) }));
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Nie udało się pobrać pomiarów' })).toBeVisible();
   await expect(page.getByText('InPost odrzucił pobranie pomiarów (HTTP 403).', { exact: true })).toBeVisible();
@@ -45,7 +45,7 @@ test('shows one honest error without empty measurement grids', async ({ page }, 
 });
 
 test('validates station selection and remembers a changed station', async ({ page }) => {
-  await page.route('**/api/weather?*', route => route.fulfill({ json: fixture(new URL(route.request().url()).searchParams.get('station')!) }));
+  await page.route('**/weather?*', route => route.fulfill({ json: fixture(new URL(route.request().url()).searchParams.get('station')!) }));
   await page.goto('/');
   await expect(page.locator('.temperature')).toContainText('10,2');
   await page.locator('.station-picker').click();
@@ -60,12 +60,12 @@ test('validates station selection and remembers a changed station', async ({ pag
 });
 
 test('reloads actual saved sensor readings offline', async ({ page, context }) => {
-  await page.route('**/api/weather?*', route => route.fulfill({ json: fixture() }));
+  await page.route('**/weather?*', route => route.fulfill({ json: fixture() }));
   await page.goto('/');
   await expect(page.locator('.temperature')).toContainText('10,2');
   await page.evaluate(async () => { await navigator.serviceWorker.ready; });
   await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
-  await page.unroute('**/api/weather?*');
+  await page.unroute('**/weather?*');
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator('.temperature')).toContainText('10,2');
@@ -74,9 +74,9 @@ test('reloads actual saved sensor readings offline', async ({ page, context }) =
 });
 
 test('live server reports InPost availability without a model fallback', async ({ request }) => {
-  const invalid = await request.get('/api/weather?station=..%2F');
+  const invalid = await request.get('/weather?station=..%2F');
   expect(invalid.status()).toBe(400);
-  const response = await request.get('/api/weather?station=TOR75M&radius=0');
+  const response = await request.get('/weather?station=TOR75M&radius=0');
   expect(response.status()).toBe(200);
   const data = await response.json();
   expect(data.station.latitude).toBe(52.99717);
@@ -86,6 +86,12 @@ test('live server reports InPost availability without a model fallback', async (
     expect([403, 429]).toContain(data.sensors.httpStatus);
     expect(data.sensors.values).toEqual({});
   }
+});
+
+test('Python reader rejects arbitrary URLs before making upstream requests', async ({ request }) => {
+  const response = await request.post('/api/inpost', { data: { points: [{ code: 'TOR75M', url: 'https://example.com/paczkomat-tor75m-test' }] } });
+  expect(response.status()).toBe(400);
+  expect((await response.json()).message).toBe('Invalid InPost point list');
 });
 
 test('shows nearby aggregation per sensor and allows changing the radius', async ({ page }) => {
@@ -102,7 +108,7 @@ test('shows nearby aggregation per sensor and allows changing the radius', async
   } };
   data.sensors = { ...data.sensors, level: null, values: { TEMPERATURE: 12.2, PM25: 0 } };
   const radii: string[] = [];
-  await page.route('**/api/weather?*', route => {
+  await page.route('**/weather?*', route => {
     const radius = new URL(route.request().url()).searchParams.get('radius')!;
     radii.push(radius);
     return route.fulfill({ json: radius === '0' ? fixture() : data });

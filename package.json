@@ -4,9 +4,9 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "node scripts/with-api.mjs dev",
 		"build": "vite build",
-		"preview": "vite preview",
+		"preview": "node scripts/with-api.mjs preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json && tsc --project src/service-worker/tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -19,6 +19,7 @@
 		"@sveltejs/adapter-vercel": "^7.0.0",
 		"@sveltejs/kit": "^3.0.0",
 		"@sveltejs/vite-plugin-svelte": "^7.2.0",
+		"@types/node": "^24.19.2",
 		"sharp": "^0.35.5",
 		"svelte": "^5.57.1",
 		"svelte-check": "^4.6.0",
@@ -31,9 +32,5 @@
 	},
 	"engines": {
 		"node": "24.x"
-	},
-	"dependencies": {
-		"impit": "^0.14.7",
-		"tough-cookie": "^6.0.2"
 	}
 }

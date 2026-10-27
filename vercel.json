@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "sveltekit",
+  "regions": ["fra1"],
+  "redirects": [
+    { "source": "/api/weather", "destination": "/weather", "permanent": false }
+  ],
+  "functions": {
+    "api/inpost.py": {
+      "maxDuration": 30,
+      "excludeFiles": "{node_modules/**,.venv/**,tests/**,test-results/**,.git/**,.svelte-kit/**,.vercel/**,static/**}"
+    }
+  }
+}

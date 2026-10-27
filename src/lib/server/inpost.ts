@@ -1,5 +1,3 @@
-import { Impit } from 'impit';
-import { CookieJar } from 'tough-cookie';
 import { DEFAULT_STATION, aggregateReadings, parseSensors, type Sensors, type Station, type WeatherData, type NearbyReading } from '#lib/weather.ts';
 
 export class StationError extends Error {
@@ -48,43 +46,43 @@ async function getNearby(station: Station, radius: number, deadline: AbortSignal
   return [...points.values()].sort((a, b) => a.distance - b.distance).slice(0, 8);
 }
 
-export async function getSensors(station: Station, deadline: AbortSignal): Promise<Sensors> {
+type ReaderResult = { code: string; httpStatus: number | null; stage: string; payload?: unknown; retrievedAt?: string };
+
+function sensorResult(result: ReaderResult): Sensors {
   const unavailable: Sensors = { status: 'unavailable', level: null, values: {}, retrievedAt: null, message: 'Nie udało się połączyć z InPost.' };
-  try {
-    const client = new Impit({ browser: 'chrome', cookieJar: new CookieJar(), timeout: 5000 });
-    // Same anonymous page session as the public website; no account or API token.
-    const page = await client.fetch(station.url, { signal: signalFor(deadline) });
-    if (page.status === 403 || page.status === 429) return { ...unavailable, status: 'blocked', httpStatus: page.status, message: `InPost odrzucił dostęp (HTTP ${page.status}).` };
-    if (!page.ok) return { ...unavailable, httpStatus: page.status };
-    const match = (await page.text()).match(/data-shipx-url="(\/(?:en\/)?shipx-point-data\/\d+\/([A-Z0-9]+)\/air_index_level)"/);
-    if (!match || match[2] !== station.code) return { ...unavailable, message: 'Brak interfejsu pomiarów dla tego punktu.' };
-    const response = await client.fetch(`https://inpost.pl${match[1]}`, {
-      method: 'POST', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', Origin: 'https://inpost.pl', Referer: station.url }, signal: signalFor(deadline)
-    });
-    if (response.status === 403 || response.status === 429) return { ...unavailable, status: 'blocked', httpStatus: response.status, message: `InPost odrzucił pobranie pomiarów (HTTP ${response.status}).` };
-    if (response.status === 404) return { ...unavailable, httpStatus: 404, message: 'InPost nie udostępnia obecnie pomiarów tego punktu.' };
-    if (!response.ok) return { ...unavailable, httpStatus: response.status };
-    return parseSensors(await response.json(), new Date().toISOString());
-  } catch { return unavailable; }
+  const httpStatus = result.httpStatus ?? undefined;
+  if (httpStatus === 403 || httpStatus === 429) return { ...unavailable, status: 'blocked', httpStatus, message: `InPost odrzucił dostęp (HTTP ${httpStatus}).` };
+  if (httpStatus === 404) return { ...unavailable, httpStatus, message: 'InPost nie udostępnia obecnie pomiarów tego punktu.' };
+  if (result.stage === 'missing-page') return { ...unavailable, message: 'Brak interfejsu pomiarów dla tego punktu.' };
+  if (httpStatus === 200 && result.payload) {
+    try { return parseSensors(result.payload, result.retrievedAt ?? new Date().toISOString()); } catch { /* Invalid upstream data remains unavailable. */ }
+  }
+  return { ...unavailable, httpStatus };
 }
 
-async function collect<T, R>(items: T[], run: (item: T) => Promise<R>): Promise<R[]> {
-  const output: R[] = new Array(items.length);
-  let cursor = 0;
-  await Promise.all(Array.from({ length: Math.min(3, items.length) }, async () => {
-    while (cursor < items.length) { const index = cursor++; output[index] = await run(items[index]); }
+async function getSensors(points: Station[], collectorUrl: URL, deadline: AbortSignal): Promise<Map<string, Sensors>> {
+  const response = await fetch(collectorUrl, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ points: points.map(({ code, url }) => ({ code, url })) }),
+    signal: deadline,
+  });
+  if (!response.ok) throw new StationError(`Odczyt InPost jest niedostępny (HTTP ${response.status}).`);
+  const body = await response.json();
+  if (!Array.isArray(body.results)) throw new StationError('Nieprawidłowa odpowiedź odczytu InPost.');
+  return new Map(points.map(point => {
+    const result = body.results.find((result: ReaderResult) => result.code === point.code);
+    return [point.code, sensorResult(result ?? { code: point.code, httpStatus: null, stage: 'network' })];
   }));
-  return output;
 }
 
-export async function getWeather(code: string, radius = 3000): Promise<WeatherData> {
-  const key = `${code}:${radius}`;
+export async function getWeather(code: string, radius: number, collectorUrl: URL): Promise<WeatherData> {
+  const key = `${collectorUrl.origin}:${code}:${radius}`;
   const cached = cache.get(key);
   if (cached && cached.expires > Date.now()) return cached.data;
   const existing = pending.get(key);
   if (existing) return existing;
   const request = (async () => {
-    const deadline = AbortSignal.timeout(18_000);
+    const deadline = AbortSignal.timeout(24_000);
     const station = await getStation(code, deadline);
     let discoveryError: string | null = null;
     let points: { station: Station; distance: number; directoryLevel?: string | null }[] = [{ station, distance: 0 }];
@@ -92,7 +90,8 @@ export async function getWeather(code: string, radius = 3000): Promise<WeatherDa
       try { points = await getNearby(station, radius, deadline); }
       catch { discoveryError = 'Nie udało się pobrać listy punktów w okolicy. Sprawdzono tylko wybrany paczkomat.'; }
     }
-    const nearby: NearbyReading[] = await collect(points, async point => ({ ...point, sensors: await getSensors(point.station, deadline) }));
+    const results = await getSensors(points.map(point => point.station), collectorUrl, deadline);
+    const nearby: NearbyReading[] = points.map(point => ({ ...point, sensors: results.get(point.station.code)! }));
     const fetchedAt = new Date().toISOString();
     let sensors = nearby[0].sensors;
     const readings = aggregateReadings(nearby);

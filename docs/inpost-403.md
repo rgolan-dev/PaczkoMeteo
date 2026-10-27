@@ -41,3 +41,13 @@ Sprawdzenie liczb na oficjalnej stronie z połączenia użytkownika pozwoli odr�
 ## Końcowa weryfikacja aplikacji
 
 Kontrola typów, build, 6 testów jednostkowych i 12 testów przeglądarkowych przeszły. Testy obliczeń i interfejsu używają jawnych danych testowych. Końcowy rzeczywisty odczyt agregacji natrafił na problem pobrania listy sąsiadów; zgodnie z obsługą błędu sprawdzono tylko TOR75M, bez uzyskanych pomiarów. Nie potwierdzono jeszcze działających surowych odczytów sąsiadów.
+
+## Test wdrożenia Vercel i poprawka transportu
+
+Publiczne wdrożenie `paczko-meteo.vercel.app` zwracało poprawną listę 8 punktów, ale każdy odczyt kończył się 403 już na otwarciu strony. Odpowiedź aplikacji miała HTTP 200; 403 pochodziły z InPost. To potwierdza działanie modułu Node i problem dostępu upstream, bez dowodu na konkretną regułę WAF lub blokadę zakresu IP.
+
+Porównanie lokalne: `curl_cffi==0.13.0` ponownie otrzymał stronę TOR75M z HTTP 200, a następnie JSON pomiarów z HTTP 404. Wymiana klienta Node na rzeczywisty `curl_cffi` jest uzasadniona tym porównaniem. Funkcja `api/inpost.py` zachowuje sesję cookies, używa POST oraz sprawdza angielską stronę, gdy polska nie ma interfejsu pomiarowego. Nie korzysta z kont, tokenów użytkowników, solverów CAPTCHA ani rotacji proxy.
+
+Funkcja przyjmuje do 8 kodów i adresów oficjalnych stron InPost. Walidacja odrzuca inne domeny, porty i ścieżki. Równocześnie wykonywane są maksymalnie 3 odczyty, z limitem czasu całej partii. Nie jest to otwarty serwer proxy.
+
+Agregacja pozostaje w SvelteKit na `/weather`. Zakres `/api/*` jest przeznaczony dla Pythona zgodnie z [dokumentacją adaptera SvelteKit](https://svelte.dev/docs/kit/adapter-vercel#Notes-Vercel-functions). [Vercel obsługuje funkcje Python](https://vercel.com/docs/functions/runtimes/python); wymagania są w `requirements.txt`. Region Frankfurt ogranicza odległość od źródła danych, ale sam w sobie nie gwarantuje usunięcia 403.

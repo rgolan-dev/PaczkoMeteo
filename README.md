@@ -1,64 +1,65 @@
 # PaczkoMeteo
 
-Prosta PWA w Svelte 5, SvelteKit 3 i TypeScript: temperatura, wilgotność, ciśnienie i jakość powietrza **z czujników InPost**. Domyślny paczkomat: TOR75M, Okólna 141, Toruń. Bez danych zastępczych z modeli pogodowych. Domyślnie agreguje maksymalnie 8 najbliższych punktów w promieniu 3 km.
+Mobilna PWA: temperatura, wilgotność, ciśnienie i jakość powietrza z czujników paczkomatów InPost. Interfejs Svelte 5 / SvelteKit 3, agregacja w TypeScript, odczyt pomiarów przez `curl_cffi` w małej funkcji Python.
 
-## Uruchomienie
-
-Node.js 24:
-
-```sh
-npm ci
-npm run dev -- --open
-```
+[Aplikacja](https://paczko-meteo.vercel.app/)
 
 ## Agregacja okolicy
 
-Wybierz promień 1, 3 lub 5 km albo pojedynczy paczkomat. Lista pochodzi z ShipX Points, jest sortowana po odległości i ograniczona do 8 punktów. Pomiary są pobierane z maksymalnie 3 punktów jednocześnie, z łącznym limitem czasu 18 sekund.
+Wybierz paczkomat i promień 1, 3 lub 5 km albo pomiary pojedynczego punktu. Aplikacja sprawdza maksymalnie 8 najbliższych lokalizacji. Każdy parametr jest agregowany osobno jako **mediana** dostępnych odczytów; obok wartości jest liczba próbek. Braki i błędy nie są traktowane jako zera. Lista punktów pokazuje odległości i statusy. Kategorii indeksu powietrza nie uśredniamy.
 
-Każdy parametr jest agregowany osobno jako **mediana** dostępnych wartości. Przykładowo temperatura może pochodzić z 3 punktów, a PM2,5 z jednego. Braki i błędy nie są traktowane jako zera. Przy temperaturze jest liczba próbek i zakres; przy pozostałych wartościach liczba próbek. Rozwijana lista pokazuje źródła, odległości i statusy. Kategorie indeksu powietrza nie są uśredniane.
+Wybór i ostatnie udane pomiary są zapisywane na urządzeniu. PWA działa offline po pierwszym otwarciu online. Odświeżanie co 5 minut przy otwartej aplikacji. Cache serwera: 5 minut dla pomiarów, 30 sekund dla błędów.
 
-Jeśli wyszukiwanie okolicy nie powiedzie się, aplikacja sprawdzi wybrany punkt i wyświetli informację, że pozostałych nie zbadano. Agregacja nie gwarantuje odczytów, gdy żaden punkt nie ma dostępnych danych.
+## Uruchomienie lokalne
 
-## Dostęp do pomiarów
-
-Pomiary pochodzą z żądania POST używanego przez stronę paczkomatu. To nieudokumentowany interfejs strony InPost, a nie oficjalne API pogodowe. Zwykły klient HTTP i Chromium otrzymywały HTTP 403 / Cloudflare. Dokładny klient `curl_cffi` używany przez InPost Air uzyskał dla TOR75M HTTP 404 i JSON `Air sensors are not available.` To oznacza brak udostępnionych odczytów tego punktu w chwili testu; nie przesądza o fizycznej obecności ani sprawności czujników.
-
-Aplikacja rozróżnia odmowę dostępu (403/429), brak danych i błąd połączenia. Przy niedostępności wyświetla jeden komunikat zamiast pustych tabel. Nie pokazuje zmyślonych wartości ani temperatury z innego źródła. InPost nie podaje czasu pomiaru — wyświetlany czas oznacza pobranie danych.
-
-Aplikacja używa klienta Node.js `impit` z anonimową sesją cookies i nagłówkami strony. Bez logowania i tokenu API. To odpowiednik mechanizmu aktualnej integracji InPost Air; nie daje gwarancji usunięcia blokady dla każdego IP. Wybór paczkomatu i promienia jest zapamiętywany. Ostatnie udane pomiary są dostępne offline po pierwszym otwarciu online. Odświeżanie co 5 minut podczas używania aplikacji. Cache serwera: 5 minut dla pomiarów, 30 sekund dla nieudanych odczytów.
-
-Wyniki sprawdzenia 403 i źródła: [docs/inpost-403.md](docs/inpost-403.md).
-
-## Vercel i instalacja
-
-Zaimportuj repozytorium w Vercel: framework **SvelteKit**, Node.js **24.x**, instalacja `npm ci`, build `npm run build`, domyślny Output Directory. Adapter Vercel jest skonfigurowany. Buduj ze źródeł na Vercel, aby npm zainstalował właściwy binarny wariant `impit` dla Linux — lokalny build z macOS zawiera bibliotekę dla macOS. Bez zmiennych środowiskowych i bazy danych.
-
-Alternatywnie, po zalogowaniu do swojego konta:
+Node.js 24 i Python 3.12. Przy pierwszym uruchomieniu:
 
 ```sh
-npx vercel --prod
+npm ci
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+npm run dev -- --open
 ```
 
-Projekt nie został opublikowany na koncie Vercel. Działanie odczytów z adresów IP Vercel wymaga osobnego sprawdzenia; wdrożenie nie gwarantuje usunięcia blokady InPost.
-
-Lokalny podgląd produkcyjny z service workerem:
+`npm run dev` i `npm run preview` uruchamiają również lokalną funkcję Python na `127.0.0.1:8787`. Można wskazać interpreter przez `PYTHON_BIN` i port przez `PACZKOMETEO_API_PORT`.
 
 ```sh
 npm run build
 npm run preview
 ```
 
-PWA wymaga HTTPS lub localhost. Instalacja: iPhone/Safari → Udostępnij → Do ekranu głównego; Android/Chrome → menu ⋮ → Dodaj do ekranu głównego.
+## Vercel
+
+Zaimportuj repozytorium: framework **SvelteKit**, Node.js **24.x**, instalacja `npm ci`, build `npm run build`, domyślny Output Directory. Vercel buduje osobną funkcję `api/inpost.py` z Pythonem 3.12 i zależnościami z `requirements.txt`. `vercel.json` ustawia region Frankfurt i limit czasu funkcji. Bez bazy danych i obowiązkowych zmiennych środowiskowych.
+
+Kod aplikacji używa `/weather` do agregacji i `/api/inpost` do odczytu pomiarów. SvelteKit celowo nie ma tras `/api/*`, ponieważ ten zakres zajmuje funkcja Python. Publikuj ze źródeł przez integrację Git lub CLI:
+
+```sh
+npx vercel --prod
+```
+
+## Dostępność danych InPost
+
+To nieoficjalny interfejs publicznych stron paczkomatów, bez gwarancji dostępności. `curl_cffi` używa anonimowej sesji strony i żądania POST. Sprawdzana jest również angielska strona, jeśli polska nie udostępnia interfejsu pomiarowego.
+
+**403 / Cloudflare** oznacza odmowę dostępu. **404 z interfejsu pomiarów** oznacza, że punkt nie udostępnia obecnie odczytów. To różne sytuacje. Zmiana klienta HTTP nie gwarantuje dostępu z każdego adresu IP.
+
+TOR75M zwracał 404 `Air sensors are not available.` Dlatego domyślnie sprawdzamy też okoliczne punkty. InPost nie podaje czasu pomiaru — wyświetlamy czas pobrania. Dane modelowe nie zastępują brakujących odczytów.
+
+Szczegóły w [docs/inpost-403.md](docs/inpost-403.md).
 
 ## Sprawdzenie
 
 ```sh
 npm run check
 npm test
+.venv/bin/python -m unittest discover -s tests -p 'test_*.py' -v
 npm run build
 npm run test:e2e
 ```
 
-Testy przeglądarkowe sprawdzają odczyty, agregację i zmianę promienia, pojedynczy komunikat błędu, wybór paczkomatu i offline na telefonie i komputerze. Test odczytu rzeczywistej dostępności InPost wymaga internetu; pozostałe używają danych testowych. Na nowym komputerze: `npx playwright install chromium`.
+Testy sprawdzają parser, mediany, dostępność poszczególnych parametrów, obsługę 403/404, angielską stronę zapasową, walidację dozwolonych adresów, agregację, wybór paczkomatu i offline. Test rzeczywistej dostępności InPost wymaga internetu. Na nowym komputerze: `npx playwright install chromium`.
 
-Ikony: `npm run icons` (źródło: `static/icon.svg`). Niezależny projekt, nie jest oficjalną aplikacją InPost.
+Ikony: `npm run icons` (źródło: `static/icon.svg`). Instalacja PWA: iPhone/Safari → Udostępnij → Do ekranu głównego; Android/Chrome → menu ⋮ → Dodaj do ekranu głównego.
+
+Niezależny projekt, nie jest oficjalną aplikacją InPost.

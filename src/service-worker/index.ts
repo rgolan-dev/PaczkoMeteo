@@ -24,7 +24,7 @@ worker.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
   // API failures reach the UI, which labels its last-successful data as saved.
-  if (request.method !== 'GET' || url.origin !== worker.location.origin || url.pathname.startsWith('/api/')) return;
+  if (request.method !== 'GET' || url.origin !== worker.location.origin || (url.pathname.startsWith('/api/') || url.pathname === '/weather')) return;
   if (assets.has(url.pathname)) {
     // Immutable same-origin assets are identical regardless of request Origin headers.
     event.respondWith((async () => (await caches.open(CACHE)).match(request, { ignoreVary: true }).then((cached) => cached ?? fetch(request)))());
