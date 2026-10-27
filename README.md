@@ -26,13 +26,13 @@ Kierunek kolejnych zmian i kryteria odbioru: [roadmapa](docs/ROADMAP.md). Najwy�
 
 ## Agregacja okolicy
 
-Domyślnie badamy **promień 5 km**. Można wybrać 1 lub 3 km albo pojedynczy punkt. Aplikacja pobiera katalog punktów w całym obszarze, wybiera lokalizacje oznaczone `air_index_level`, sprawdza ich czujniki i wybrany paczkomat oraz oblicza **medianę osobno dla każdego parametru**. Każdy parametr jest obliczany z własnego zestawu dostępnych próbek. Rozwijana lista pokazuje wyłącznie punkty z dostępnymi pomiarami i ich odległości. Kategorie indeksu powietrza nie są uśredniane.
+Domyślnie badamy **promień 5 km**. Można wybrać 1 lub 3 km albo pojedynczy punkt. Aplikacja pobiera katalog punktów w całym obszarze, wybiera lokalizacje oznaczone `air_index_level`, sprawdza ich czujniki i wybrany paczkomat oraz oblicza **medianę osobno dla każdego parametru**. Każdy parametr jest obliczany z własnego zestawu dostępnych próbek. Rozwijana lista pokazuje wyłącznie punkty z dostępnymi pomiarami i ich odległości. Do mediany wchodzą tylko odczyty z wiarygodnym czasem końca pomiaru, nie starsze niż 20 minut. Odczyty bez daty lub z datą ponad 5 minut w przyszłości są pomijane. Świeże pobranie odpowiedzi nie czyni starego pomiaru aktualnym. Kategorie indeksu powietrza nie są uśredniane.
 
 Czcionki DM Sans i Manrope są serwowane lokalnie jako WOFF2, również offline. Pierwsze otwarcie nie czeka na zewnętrzny arkusz Google Fonts; licencje OFL znajdują się w `static/fonts/`.
 
 Katalog jest stronicowany (do 500 lokalizacji), a odczyty obejmują do 32 wybranych punktów, z komunikatem przy ograniczeniu wyników. Gdy katalog nie wskazuje żadnego czujnika, aplikacja sprawdza do 8 najbliższych punktów. Odczyty są pobierane po 3 równolegle. Cache pojedynczych czujników jest wspólny dla różnych promieni: 5 minut dla pomiarów, 30 minut dla braku czujnika (404), 30 sekund dla innych błędów. Oznaczenie czujnika w katalogu pozwala ponowić odczyt mimo zapamiętanego 404. Cache procesu na Vercel jest optymalizacją, nie trwałym magazynem.
 
-Wybór i ostatnie udane pomiary są zapisywane na urządzeniu. Pierwsze uruchomienie po zmianie wyszukiwania ustawia 5 km także dla starszych zapisanych preferencji; kolejne ręczne wybory są pamiętane. PWA otwiera się offline po pierwszym użyciu online. Odświeżanie co 5 minut podczas używania aplikacji. Cache serwera: 5 minut dla pomiarów, 30 sekund dla błędów. Interfejs pokazuje czas pobrania i dostępny zakres czasu danych.
+Wybór i ostatnie udane pomiary są zapisywane na urządzeniu. Pierwsze uruchomienie po zmianie wyszukiwania ustawia 5 km także dla starszych zapisanych preferencji; kolejne ręczne wybory są pamiętane. PWA otwiera się offline po pierwszym użyciu online. Odświeżanie co 5 minut podczas używania aplikacji. Cache serwera: do 5 minut dla pomiarów, 30 sekund dla błędów; czas ważności odpowiedzi i cache HTTP nie przekraczają limitu świeżości najstarszego użytego pomiaru. Interfejs pokazuje czas pobrania i dostępny zakres czasu danych.
 
 ## Uruchomienie
 

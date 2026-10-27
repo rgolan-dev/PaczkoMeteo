@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseSensors, number, aggregateReadings, DEFAULT_STATION } from '../src/lib/weather.ts';
+import { parseSensors, number, aggregateReadings, filterStaleSensors, oldestMeasurementTime, DEFAULT_STATION } from '../src/lib/weather.ts';
 
 const payload = (values: unknown[], level: unknown = 'GOOD') => ({ current: { values, index: { name: 'PIJP', level }, fromDateTime: '2026-10-27T12:00:00Z', tillDateTime: '2026-10-27T13:15:00Z' } });
 
@@ -60,4 +60,28 @@ test('aggregates each parameter separately and ignores unavailable sources', () 
   assert.equal(result.PM25.max, 20);
   assert.equal(result.HUMIDITY, undefined);
   assert.deepEqual(aggregateReadings([]), {});
+});
+
+
+test('uses measurement time rather than fetch time to reject old, missing and future-dated readings', () => {
+  const now = Date.parse('2026-10-27T14:32:00Z');
+  const sensor = parseSensors(payload([{ name: 'TEMPERATURE', value: -2 }, { name: 'PM25', value: 0 }]), new Date(now).toISOString());
+  const fresh = { ...sensor, measuredTo: new Date(now - 2 * 60_000).toISOString() };
+  assert.equal(filterStaleSensors(fresh, now).status, 'available');
+  assert.equal(filterStaleSensors(fresh, now).values.PM25, 0);
+  for (const measuredTo of ['2026-10-07T08:56:18Z', new Date(now - 21 * 60_000).toISOString(), null, 'invalid', new Date(now + 10 * 60_000).toISOString()]) {
+    const result = filterStaleSensors({ ...sensor, measuredTo }, now);
+    assert.equal(result.status, 'unavailable');
+    assert.deepEqual(result.values, {});
+    assert.equal(result.level, null);
+  }
+});
+
+test('freshness of an aggregate follows its oldest included measurement and ignores excluded points', () => {
+  const now = Date.parse('2026-10-27T14:32:00Z');
+  const sensor = parseSensors(payload([{ name: 'TEMPERATURE', value: 10 }]), new Date(now).toISOString());
+  const old = filterStaleSensors({ ...sensor, measuredTo: '2026-10-07T08:56:18Z' }, now);
+  const fresh = { ...sensor, measuredTo: new Date(now - 60_000).toISOString() };
+  const olderFresh = { ...sensor, measuredTo: new Date(now - 3 * 60_000).toISOString() };
+  assert.equal(oldestMeasurementTime({ station: DEFAULT_STATION, sensors: fresh, fetchedAt: new Date(now).toISOString(), nearby: [old, fresh, olderFresh].map(sensors => ({ station: DEFAULT_STATION, sensors, distance: 100 })) }), now - 3 * 60_000);
 });

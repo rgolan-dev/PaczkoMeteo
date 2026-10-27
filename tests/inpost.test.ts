@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { getSensors, getWeather } from '../src/lib/server/inpost.ts';
 import { DEFAULT_STATION } from '../src/lib/weather.ts';
 
-const reading = { current: { fromDateTime: '2026-10-27T12:00:00Z', tillDateTime: '2026-10-27T13:15:00Z', values: [{ name: 'TEMPERATURE', value: 14 }, { name: 'PM25', value: 8 }], index: { name: 'PIJP', level: 'GOOD' } } };
+const reading = { current: { fromDateTime: new Date(Date.now() - 75 * 60_000).toISOString(), tillDateTime: new Date().toISOString(), values: [{ name: 'TEMPERATURE', value: 14 }, { name: 'PM25', value: 8 }], index: { name: 'PIJP', level: 'GOOD' } } };
 
 test('uses the public air-sensors GET without website scraping or credentials', async context => {
   const fetch = context.mock.method(globalThis, 'fetch', async () => new Response(JSON.stringify(reading), { headers: { 'Content-Type': 'application/json' } }));
@@ -130,4 +130,62 @@ test('bounds sensor requests, keeps nearest candidates and labels the limit inst
   assert.equal(result.nearby?.length, 32);
   assert.equal(result.nearby?.at(-1)?.station.code, 'CAP30M');
   assert.match(result.aggregation!.discoveryError!, /32/);
+});
+
+test('excludes old, undated and future measurements before computing medians and time ranges', async context => {
+  const current = Date.now();
+  const raw = (end: number) => ({ current: { ...reading.current, fromDateTime: new Date(end - 75 * 60_000).toISOString(), tillDateTime: new Date(end).toISOString() } });
+  context.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    if (url.search) return Response.json({ items: ['FSH01M', 'OLD01M', 'NOTIME', 'FUT01M'].map((code, i) => point(code, 100 + i * 100, 'GOOD')) });
+    if (!url.pathname.endsWith('/air-sensors')) return Response.json(point('NBR05M', 0));
+    if (url.pathname.includes('/FSH01M/')) return Response.json(raw(current - 2 * 60_000));
+    if (url.pathname.includes('/OLD01M/')) return Response.json(raw(current - 20 * 86400_000));
+    if (url.pathname.includes('/NOTIME/')) return Response.json({ current: { values: reading.current.values } });
+    if (url.pathname.includes('/FUT01M/')) return Response.json(raw(current + 86400_000));
+    return new Response('', { status: 404 });
+  });
+  const result = await getWeather('NBR05M');
+  assert.equal(result.sensors.status, 'available');
+  assert.deepEqual(result.aggregation!.readings.TEMPERATURE.sources.map(p => p.code), ['FSH01M']);
+  assert.equal(result.sensors.measuredTo, new Date(current - 2 * 60_000).toISOString());
+  assert.equal(result.sensors.measuredFrom, new Date(current - 77 * 60_000).toISOString());
+  for (const code of ['OLD01M', 'NOTIME', 'FUT01M']) {
+    const sensor = result.nearby!.find(p => p.station.code === code)!.sensors;
+    assert.equal(sensor.status, 'unavailable');
+    assert.deepEqual(sensor.values, {});
+  }
+});
+
+test('a single old sensor is unavailable even if its response was fetched now', async context => {
+  context.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => String(input).endsWith('/air-sensors')
+    ? Response.json({ current: { ...reading.current, fromDateTime: '2026-10-07T07:56:18Z', tillDateTime: '2026-10-07T08:56:18Z' } })
+    : Response.json(point('NBR06M', 0)));
+  const result = await getWeather('NBR06M', 0);
+  assert.equal(result.sensors.status, 'unavailable');
+  assert.deepEqual(result.sensors.values, {});
+  assert.match(result.sensors.message, /ponad 20 minut/);
+});
+
+test('aggregate cache expires when a cached sensor crosses the freshness cutoff', async context => {
+  const base = Date.now();
+  let clock = base, directoryCalls = 0, sensorCalls = 0;
+  context.mock.method(Date, 'now', () => clock);
+  context.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    const url = new URL(String(input));
+    if (url.search) { directoryCalls++; return Response.json({ items: [point('EXP01M', 100, 'GOOD')] }); }
+    if (!url.pathname.endsWith('/air-sensors')) return Response.json(point('NBR07M', 0));
+    if (url.pathname.includes('/EXP01M/')) {
+      sensorCalls++;
+      return Response.json({ current: { ...reading.current, fromDateTime: new Date(base - 90 * 60_000).toISOString(), tillDateTime: new Date(base - 19 * 60_000).toISOString() } });
+    }
+    return new Response('', { status: 404 });
+  });
+  assert.equal((await getWeather('NBR07M')).sensors.status, 'available');
+  clock += 2 * 60_000;
+  const expired = await getWeather('NBR07M');
+  assert.equal(directoryCalls, 2);
+  assert.equal(sensorCalls, 1);
+  assert.equal(expired.sensors.status, 'unavailable');
+  assert.deepEqual(expired.sensors.values, {});
 });

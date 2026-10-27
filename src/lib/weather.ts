@@ -39,6 +39,25 @@ export type AggregatedReading = {
 };
 
 export const DEFAULT_RADIUS = 5000;
+export const MAX_SENSOR_AGE_MS = 20 * 60_000;
+
+// Fetching a response now does not make its measurements current.
+export function filterStaleSensors(sensors: Sensors, now: number): Sensors {
+  if (sensors.status !== 'available') return sensors;
+  const measuredAt = Date.parse(sensors.measuredTo ?? '');
+  const validTime = Number.isFinite(measuredAt) && measuredAt <= now + 5 * 60_000;
+  if (validTime && now - measuredAt <= MAX_SENSOR_AGE_MS) return sensors;
+  return {
+    ...sensors, status: 'unavailable', values: {}, level: null,
+    message: validTime ? 'Pomiar ma ponad 20 minut i został pominięty.' : 'Brak wiarygodnej daty pomiaru. Odczyt został pominięty.'
+  };
+}
+
+export function oldestMeasurementTime(data: WeatherData): number | null {
+  const sensors = data.nearby?.length ? data.nearby.map(point => point.sensors) : [data.sensors];
+  const times = sensors.filter(sensor => sensor.status === 'available').map(sensor => Date.parse(sensor.measuredTo ?? '')).filter(Number.isFinite);
+  return times.length ? Math.min(...times) : null;
+}
 
 export function aggregateReadings(points: NearbyReading[]): Record<string, AggregatedReading> {
   const groups: Record<string, AggregatedReading['sources']> = {};

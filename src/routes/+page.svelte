@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import Icon from '#lib/Icon.svelte';
-  import { DEFAULT_STATION, DEFAULT_RADIUS, LEVELS, number, time, distanceLabel, type WeatherData, type Station } from '#lib/weather.ts';
+  import { DEFAULT_STATION, DEFAULT_RADIUS, MAX_SENSOR_AGE_MS, oldestMeasurementTime, LEVELS, number, time, distanceLabel, type WeatherData, type Station } from '#lib/weather.ts';
 
   import { outfitAdvice, upcomingHours, weatherCondition, type Forecast } from '#lib/forecast.ts';
 
@@ -65,7 +65,11 @@
   }
 
   const station = $derived(data?.station ?? DEFAULT_STATION);
-  const stale = $derived(!!data && (now - Date.parse(data.fetchedAt) > 20 * 60_000 || data.nearby?.some(point => point.sensors.status === 'available' && point.sensors.measuredTo && now - Date.parse(point.sensors.measuredTo) > 20 * 60_000)));
+  const oldestMeasurement = $derived(data ? oldestMeasurementTime(data) : null);
+  const staleMeasurements = $derived(oldestMeasurement !== null && now - oldestMeasurement > MAX_SENSOR_AGE_MS);
+  const stale = $derived(staleMeasurements || (!!data && now - Date.parse(data.fetchedAt) > MAX_SENSOR_AGE_MS));
+  const staleMessage = $derived(staleMeasurements && oldestMeasurement !== null ? `Najstarszy użyty pomiar pochodzi z ${dateTime(oldestMeasurement)} i ma ponad 20 minut.` : 'Nie odświeżono danych od ponad 20 minut.');
+  function dateTime(value: string | number) { return new Date(value).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw', dateStyle: 'short', timeStyle: 'short' }); }
   const aggregation = $derived(data?.aggregation);
   const temperatureSources = $derived(aggregation?.readings.TEMPERATURE?.sources.length ?? (data?.sensors.values.TEMPERATURE != null ? 1 : 0));
   const hasReadings = $derived(data?.sensors.status === 'available');
@@ -86,7 +90,7 @@
     error = ''; formError = '';
     if (!change && (data || code === DEFAULT_STATION.code)) void loadForecast(station);
     try {
-      const response = await fetch(`/weather?station=${encodeURIComponent(code)}&radius=${requestedRadius}`, { signal: AbortSignal.timeout(25_000) });
+      const response = await fetch(`/weather?station=${encodeURIComponent(code)}&radius=${requestedRadius}&v=2`, { signal: AbortSignal.timeout(25_000) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? 'Nie udało się pobrać danych.');
       if (id !== requestId) return false;
@@ -97,7 +101,7 @@
       now = Date.now();
       writeStorage('paczkometeo-station', stationCode);
       writeStorage('paczkometeo-radius-v2', String(requestedRadius));
-      if (result.sensors.status === 'available') writeStorage(`paczkometeo-inpost-${stationCode}-${requestedRadius}`, JSON.stringify(result));
+      if (result.sensors.status === 'available') writeStorage(`paczkometeo-inpost-v2-${stationCode}-${requestedRadius}`, JSON.stringify(result));
       return true;
     } catch (cause) {
       if (id !== requestId) return false;
@@ -133,7 +137,7 @@
     const storedStation = readStorage('paczkometeo-station');
     if (storedStation && /^[A-Z0-9]{3,12}$/.test(storedStation)) stationCode = storedStation;
     try {
-      const stored = JSON.parse(readStorage(`paczkometeo-inpost-${stationCode}-${radius}`) ?? 'null');
+      const stored = JSON.parse(readStorage(`paczkometeo-inpost-v2-${stationCode}-${radius}`) ?? 'null');
       if (stored?.station?.code === stationCode && stored.sensors?.status === 'available' && stored.sensors.values && Number.isFinite(Date.parse(stored.fetchedAt))) { data = stored; saved = true; }
     } catch { /* Ignore outdated local data. */ }
     void load();
@@ -178,7 +182,7 @@
     <h1 class="sr-only">Pogoda i pomiary w okolicy {station.code}</h1>
 
     {#if offline || saved || stale || error}
-      <div class="notice" role="status"><Icon name={offline ? 'offline' : 'info'} size={18}/><span>{error || (offline ? 'Offline — zapisane pomiary.' : saved ? 'Zapisane pomiary.' : 'Pomiary mogą być nieaktualne.')}{#if data} Pobrano {new Date(data.fetchedAt).toLocaleString('pl-PL', { timeZone: 'Europe/Warsaw' })}.{/if}</span></div>
+      <div class="notice" role="status"><Icon name={offline ? 'offline' : 'info'} size={18}/><span><span>{error || (offline ? 'Offline — zapisane pomiary.' : saved ? 'Zapisane pomiary.' : staleMessage)}</span>{' '}{#if data}<span class="notice-time">Pobrano dane: {dateTime(data.fetchedAt)}.</span>{/if}</span></div>
     {/if}
 
     <div class="hero-grid">
@@ -238,7 +242,7 @@
       <div class="scope-controls"><label for="radius">Pomiary</label><select id="radius" bind:value={radius} onchange={() => load()}><option value={0}>Tylko {stationCode}</option><option value={1000}>Okolica · 1 km</option><option value={3000}>Okolica · 3 km</option><option value={5000}>Okolica · 5 km</option></select><p>Wyszukujemy czujniki w całym wybranym obszarze. Pokazujemy tylko punkty z pomiarami.</p></div>
       {#if aggregation?.readings.TEMPERATURE}{@const reading = aggregation.readings.TEMPERATURE}<p class="aggregate-caption">{reading.sources.length > 1 ? `Mediana z ${reading.sources.length} pkt. · zakres ${number(reading.min, 1)}–${number(reading.max, 1)}°C` : 'Temperatura z jednego punktu pomiarowego.'}</p>{/if}
       {#if aggregation?.discoveryError}<p class="discovery-error">{aggregation.discoveryError}</p>{/if}
-      {#each measurementPoints as point}<div class="point-row"><div><a href={point.station.url} target="_blank" rel="noreferrer">{point.station.code}<Icon name="external" size={12}/></a><span>{point.station.address} · {distanceLabel(point.distance)}</span></div><div class="point-state"><strong>{point.sensors.values.TEMPERATURE != null ? `${number(point.sensors.values.TEMPERATURE, 1)}°C` : ''}{point.sensors.values.PM25 != null ? ` · PM2,5 ${number(point.sensors.values.PM25, 1)}` : ''}</strong><span>Pobrano {point.sensors.retrievedAt ? time(point.sensors.retrievedAt) : '—'}</span></div></div>{/each}
+      {#each measurementPoints as point}<div class="point-row"><div><a href={point.station.url} target="_blank" rel="noreferrer">{point.station.code}<Icon name="external" size={12}/></a><span>{point.station.address} · {distanceLabel(point.distance)}</span></div><div class="point-state"><strong>{point.sensors.values.TEMPERATURE != null ? `${number(point.sensors.values.TEMPERATURE, 1)}°C` : ''}{point.sensors.values.PM25 != null ? ` · PM2,5 ${number(point.sensors.values.PM25, 1)}` : ''}</strong><span>{#if point.sensors.measuredTo}Pomiar do {time(point.sensors.measuredTo)}{:else}Czas pomiaru nieznany{/if}</span></div></div>{/each}
       {#if hasReadings && data}<p class="reading-source">InPost · pobrano {time(data.fetchedAt)}{#if data.sensors.measuredFrom && data.sensors.measuredTo} · dane {time(data.sensors.measuredFrom)}–{time(data.sensors.measuredTo)}{/if}</p>{/if}
       {#if !measurementPoints.length}<p class="muted">Brak dostępnych pomiarów w tym obszarze. Możesz wybrać większy promień.</p>{/if}
     </details>
@@ -253,7 +257,7 @@
 </dialog>
 <dialog bind:this={installDialog} class="modal"><div class="modal-heading"><h2>Zainstaluj</h2><button class="icon-button" aria-label="Zamknij instrukcję instalacji" onclick={() => installDialog.close()}><Icon name="close"/></button></div><div class="instruction"><strong>iPhone · Safari</strong><p>Udostępnij → Do ekranu głównego → Dodaj.</p></div><div class="instruction"><strong>Android · Chrome</strong><p>Menu ⋮ → Dodaj do ekranu głównego.</p></div></dialog>
 <dialog bind:this={sourcesDialog} class="modal"><div class="modal-heading"><h2>Źródła danych</h2><button class="icon-button" aria-label="Zamknij informacje o danych" onclick={() => sourcesDialog.close()}><Icon name="close"/></button></div>
-  <h3>Pomiary · InPost</h3><p>Temperatura w okolicy, wilgotność, ciśnienie i jakość powietrza pochodzą z czujników InPost. Domyślnie wyszukujemy punkty z czujnikami w promieniu 5 km. Najpierw pobieramy listę paczkomatów, a następnie odczyty punktów oznaczonych czujnikami. Sprawdzamy też wybrany paczkomat; gdy lista nie wskazuje czujników, sprawdzamy do 8 najbliższych punktów. W bardzo gęstej okolicy sprawdzamy do 32 punktów i informujemy o ograniczeniu. W trybie okolicy liczymy medianę osobno dla każdego parametru. Punkty bez pomiarów są pomijane; brakujących wartości nie zastępujemy prognozą. Przedział czasu odczytów i lista punktów znajdują się w „Pomiary w okolicy”.</p>
+  <h3>Pomiary · InPost</h3><p>Temperatura w okolicy, wilgotność, ciśnienie i jakość powietrza pochodzą z czujników InPost. Domyślnie wyszukujemy punkty z czujnikami w promieniu 5 km. Najpierw pobieramy listę paczkomatów, a następnie odczyty punktów oznaczonych czujnikami. Sprawdzamy też wybrany paczkomat; gdy lista nie wskazuje czujników, sprawdzamy do 8 najbliższych punktów. W bardzo gęstej okolicy sprawdzamy do 32 punktów i informujemy o ograniczeniu. W trybie okolicy liczymy medianę osobno dla każdego parametru. Odczyty starsze niż 20 minut lub bez wiarygodnej daty nie wchodzą do mediany. Czas pobrania danych nie oznacza czasu wykonania pomiaru. Punkty bez aktualnych pomiarów są pomijane; brakujących wartości nie zastępujemy prognozą. Przedział czasu odczytów i lista punktów znajdują się w „Pomiary w okolicy”.</p>
   <h3>Prognoza · Open-Meteo</h3><p>Warunki pogodowe, temperatura odczuwalna, opady, wiatr i kolejne dni są prognozą modelową dla lokalizacji wybranego paczkomatu. To osobne źródło, niezależne od czujników InPost.</p>
   <h3>Podpowiedź ubioru</h3><p>Orientacyjna propozycja na najbliższe 12 godzin, według najniższej temperatury odczuwalnej, zmian temperatury, opadów i wiatru. Nie uwzględnia Twojej aktywności ani indywidualnego odczuwania zimna. Zapisana lub nieaktualna prognoza nie generuje podpowiedzi.</p>
   <p>Odświeżamy dane co 5 minut podczas używania aplikacji. Niezależny projekt.</p><div class="source-links"><a class="text-link" href={station.url} target="_blank" rel="noreferrer">InPost<Icon name="external" size={14}/></a><a class="text-link" href="https://open-meteo.com/" target="_blank" rel="noreferrer">Weather data by Open-Meteo.com<Icon name="external" size={14}/></a></div>

@@ -214,3 +214,5 @@ h2 { font-size:17px; line-height:1.5; font-weight:750; letter-spacing:-.5px; }
 }
 @media(max-width:360px) { .app-shell { padding-left:14px; padding-right:14px; } .brand { font-size:19px; } .header-actions { gap:0; } .temperature { font-size:80px; } .temperature>span { font-size:27px; } .temperature-art { width:56px; height:56px; margin-right:0; } .weather-card,.outfit-card,.panel { padding:20px; } .section-heading h2 { font-size:15px; } .outfit-card h3 { font-size:23px; } .hour-time { font-size:9px; } .hour-cell>strong { font-size:21px; } .sun-times { font-size:9px; gap:5px; } }
 @media(prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none!important; transition:none!important; } }
+
+.notice-time { display:block; margin-top:4px; font-size:11px; }

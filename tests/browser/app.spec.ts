@@ -8,7 +8,7 @@ function fixture(code = 'TOR75M', available = true): WeatherData {
     station: { ...DEFAULT_STATION, code, city: code === 'TOR75M' ? 'Toruń' : 'Warszawa' },
     fetchedAt,
     sensors: available
-      ? { status: 'available', level: 'GOOD', values: { TEMPERATURE: 10.2, PM25: 0, PM10: 12.5, HUMIDITY: 70, PRESSURE: 1010 }, retrievedAt: fetchedAt, message: 'Odczyty InPost.' }
+      ? { status: 'available', level: 'GOOD', values: { TEMPERATURE: 10.2, PM25: 0, PM10: 12.5, HUMIDITY: 70, PRESSURE: 1010 }, retrievedAt: fetchedAt, measuredFrom: fetchedAt, measuredTo: fetchedAt, message: 'Odczyty InPost.' }
       : { status: 'blocked', level: null, values: {}, retrievedAt: null, httpStatus: 403, message: 'InPost odrzucił pobranie pomiarów (HTTP 403).' }
   };
 }
@@ -31,6 +31,7 @@ test('separates sensor measurements, forecast and clothing advice in the new int
   await page.goto('/');
   await expect(page.locator('.temperature')).toContainText('10,2');
   await expect(page.locator('.weather-metrics')).toContainText('70');
+  await expect(page.locator('.notice')).toHaveCount(0);
   await expect(page.getByText('Dobra', { exact: true })).toBeVisible();
   await expect(page.locator('.pollutants')).toContainText('12,5');
   await expect(page.locator('.forecast-section')).toContainText('Open-Meteo');
@@ -228,4 +229,16 @@ test('live default area includes multiple sensors beyond the previous eight clos
   expect(sources.length).toBeGreaterThan(1);
   expect(sources.some((point: {distance:number}) => point.distance > 3000)).toBe(true);
   expect(sources.every((point: {distance:number}) => point.distance <= 5000)).toBe(true);
+});
+
+
+test('explains an old measurement separately from a response fetched just now', async ({ page }) => {
+  const data = fixture();
+  data.sensors.measuredTo = new Date(Date.now() - 40 * 60_000).toISOString();
+  await page.route('**/weather?*', route => route.fulfill({ json: data }));
+  await page.goto('/');
+  await expect(page.locator('.notice')).toContainText('Najstarszy użyty pomiar');
+  await expect(page.locator('.notice')).toContainText('ponad 20 minut');
+  await expect(page.locator('.notice-time')).toContainText('Pobrano dane:');
+  await expect(page.locator('.notice')).not.toContainText('Pomiary mogą być nieaktualne.');
 });

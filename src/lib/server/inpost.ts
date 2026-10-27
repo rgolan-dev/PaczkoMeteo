@@ -1,4 +1,4 @@
-import { DEFAULT_RADIUS, DEFAULT_STATION, aggregateReadings, parseSensors, type Sensors, type Station, type WeatherData, type NearbyReading } from '#lib/weather.ts';
+import { DEFAULT_RADIUS, DEFAULT_STATION, MAX_SENSOR_AGE_MS, aggregateReadings, filterStaleSensors, oldestMeasurementTime, parseSensors, type Sensors, type Station, type WeatherData, type NearbyReading } from '#lib/weather.ts';
 
 export class StationError extends Error {
   status: number;
@@ -123,7 +123,9 @@ export async function getWeather(code: string, radius = DEFAULT_RADIUS): Promise
       try { const discovered = await getNearby(station, radius, deadline); points = discovered.points; discoveryError = discovered.warning; }
       catch { discoveryError = 'Nie udało się pobrać listy punktów w okolicy. Sprawdzono tylko wybrany paczkomat.'; }
     }
-    const nearby: NearbyReading[] = await collect(points, async point => ({ ...point, sensors: await getCachedSensors(point, deadline) }));
+    const collected: NearbyReading[] = await collect(points, async point => ({ ...point, sensors: await getCachedSensors(point, deadline) }));
+    const snapshotTime = Date.now();
+    const nearby = collected.map(point => ({ ...point, sensors: filterStaleSensors(point.sensors, snapshotTime) }));
     const fetchedAt = new Date().toISOString();
     let sensors = nearby[0].sensors;
     const readings = aggregateReadings(nearby);
@@ -136,12 +138,14 @@ export async function getWeather(code: string, radius = DEFAULT_RADIUS): Promise
         status: available ? 'available' : nearby.some(point => point.sensors.status === 'blocked') ? 'blocked' : 'unavailable',
         values: Object.fromEntries(Object.entries(readings).map(([key, reading]) => [key, reading.value])),
         level: null, retrievedAt: available ? fetchedAt : null, measuredFrom: from[0] ?? null, measuredTo: to.at(-1) ?? null,
-        message: available ? 'Mediana dostępnych pomiarów InPost.' : 'Nie uzyskano pomiarów ze sprawdzonych punktów.',
+        message: available ? 'Mediana aktualnych pomiarów InPost.' : 'Brak aktualnych pomiarów ze sprawdzonych czujników.',
       };
     }
     const data: WeatherData = { station, sensors, fetchedAt, nearby, ...(radius ? { aggregation: { radius, readings, discoveryError } } : {}) };
     if (cache.size >= 100) cache.delete(cache.keys().next().value!);
-    cache.set(key, { data, expires: Date.now() + (sensors.status === 'available' ? 300_000 : 30_000) });
+    const oldest = oldestMeasurementTime(data);
+    const expires = Math.min(Date.now() + (sensors.status === 'available' ? 300_000 : 30_000), oldest === null ? Infinity : oldest + MAX_SENSOR_AGE_MS);
+    cache.set(key, { data, expires });
     return data;
   })();
   pending.set(key, request);
